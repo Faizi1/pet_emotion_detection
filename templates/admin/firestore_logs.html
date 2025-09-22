@@ -1,0 +1,60 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Emotion Logs</h1>
+<form method="get" style="margin:10px 0; display:flex; gap:8px; flex-wrap:wrap;">
+  <input type="text" name="petId" placeholder="Pet ID" value="{{ request.GET.petId }}">
+  <select name="emotion">
+    <option value="">Emotion</option>
+    <option value="happy" {% if request.GET.emotion == 'happy' %}selected{% endif %}>Happy</option>
+    <option value="sad" {% if request.GET.emotion == 'sad' %}selected{% endif %}>Sad</option>
+    <option value="anxious" {% if request.GET.emotion == 'anxious' %}selected{% endif %}>Anxious</option>
+    <option value="excited" {% if request.GET.emotion == 'excited' %}selected{% endif %}>Excited</option>
+    <option value="neutral" {% if request.GET.emotion == 'neutral' %}selected{% endif %}>Neutral</option>
+  </select>
+  <input type="number" name="minConfidence" placeholder="Min Confidence" value="{{ request.GET.minConfidence }}" step="0.01" min="0" max="1">
+  <button class="button" type="submit">Filter</button>
+  <a class="button" href="/admin-panel/logs/">Reset</a>
+</form>
+<div style="margin:8px 0;">
+  <a class="button" href="/admin-panel/dashboard/">Dashboard</a>
+  <a class="button" href="/admin-panel/users/">Users</a>
+  <a class="button" href="/admin-panel/pets/">Pets</a>
+  <a class="button" href="/admin-panel/logs/">Logs</a>
+</div>
+<table class="listing" style="width:100%;">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Owner UID</th>
+      <th>Pet ID</th>
+      <th>Timestamp</th>
+      <th>Emotion</th>
+      <th>Confidence</th>
+      <th>Media</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for l in logs %}
+    <tr>
+      <td><code>{{ l.id }}</code></td>
+      <td><code>{{ l.ownerUid }}</code></td>
+      <td>{{ l.petId }}</td>
+      <td>{{ l.timestamp }}</td>
+      <td>{{ l.emotion }}</td>
+      <td>{{ l.confidence }}</td>
+      <td>{% if l.mediaUrl %}<a href="{{ l.mediaUrl }}" target="_blank">open</a>{% endif %}</td>
+      <td>
+        <form method="post" action="/admin-panel/logs/{{ l.ownerUid }}/{{ l.id }}/delete/" style="display:inline;">{% csrf_token %}
+          <button class="button" onclick="return confirm('Delete log?')">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7">No logs.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+

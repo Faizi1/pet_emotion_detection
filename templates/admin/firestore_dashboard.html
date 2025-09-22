@@ -1,0 +1,73 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div class="dashboard">
+  <div style="margin:8px 0;">
+    <a class="button" href="/admin-panel/dashboard/">Dashboard</a>
+    <a class="button" href="/admin-panel/users/">Users</a>
+    <a class="button" href="/admin-panel/pets/">Pets</a>
+    <a class="button" href="/admin-panel/logs/">Logs</a>
+  </div>
+  <h1>PetMood Analytics</h1>
+  <div style="display:flex;gap:16px;">
+    <a href="/admin-panel/users/" style="text-decoration:none;color:inherit;">
+    <div class="module" style="padding:16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;">
+      <h2>Total Users</h2>
+      <p style="font-size:24px;">{{ total_users }}</p>
+    </div>
+    </a>
+    <a href="/admin-panel/pets/" style="text-decoration:none;color:inherit;">
+    <div class="module" style="padding:16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;">
+      <h2>Total Pets</h2>
+      <p style="font-size:24px;">{{ total_pets }}</p>
+    </div>
+    </a>
+    <a href="/admin-panel/logs/" style="text-decoration:none;color:inherit;">
+    <div class="module" style="padding:16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;">
+      <h2>Total Scans</h2>
+      <p style="font-size:24px;">{{ total_scans }}</p>
+    </div>
+    </a>
+  </div>
+  <div style="display:flex;gap:16px;margin-top:20px;align-items:stretch;">
+    <div class="module" style="flex:1;padding:16px;border:1px solid #ddd;border-radius:6px;min-height:320px;">
+      <h2>Scans (last 7 days)</h2>
+      <div style="height:260px;">
+        <canvas id="scansChart"></canvas>
+      </div>
+    </div>
+    <div class="module" style="flex:1;padding:16px;border:1px solid #ddd;border-radius:6px;min-height:320px;">
+      <h2>Emotion distribution</h2>
+      <div style="height:260px;">
+        <canvas id="emotionChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <p style="margin-top:12px;">This is a simple MVP dashboard pulling counts directly from Firestore.</p>
+  <p>Access via <code>/admin-panel/dashboard/</code>.</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const days = {{ chart_days|safe }};
+  const values = {{ chart_values|safe }};
+  const emoLabels = {{ emotion_labels|safe }};
+  const emoValues = {{ emotion_values|safe }};
+
+  const sctx = document.getElementById('scansChart').getContext('2d');
+  new Chart(sctx, {
+    type: 'line',
+    data: { labels: days, datasets: [{ label: 'Scans', data: values, borderColor: '#0b7285', backgroundColor: 'rgba(11,114,133,0.2)' }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, precision: 0 } } }
+  });
+
+  const ectx = document.getElementById('emotionChart').getContext('2d');
+  new Chart(ectx, {
+    type: 'doughnut',
+    data: { labels: emoLabels, datasets: [{ data: emoValues, backgroundColor: ['#22c55e','#ef4444','#f59e0b','#3b82f6','#6b7280'] }] },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+</script>
+{% endblock %}
+
+

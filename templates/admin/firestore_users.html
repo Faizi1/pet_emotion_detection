@@ -1,0 +1,58 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Users</h1>
+<form method="get" style="margin:10px 0; display:flex; gap:8px; flex-wrap:wrap;">
+  <input type="text" name="name" placeholder="Name" value="{{ request.GET.name }}">
+  <input type="text" name="email" placeholder="Email" value="{{ request.GET.email }}">
+  <input type="text" name="number" placeholder="Number" value="{{ request.GET.number }}">
+  <select name="phoneVerified">
+    <option value="">Phone Verified</option>
+    <option value="yes" {% if request.GET.phoneVerified == 'yes' %}selected{% endif %}>Yes</option>
+    <option value="no" {% if request.GET.phoneVerified == 'no' %}selected{% endif %}>No</option>
+  </select>
+  <button class="button" type="submit">Filter</button>
+  <a class="button" href="/admin-panel/users/">Reset</a>
+</form>
+<link rel="stylesheet" href="/static/admin/css/base.css">
+<div style="margin:8px 0;">
+  <a class="button" href="/admin-panel/dashboard/">Dashboard</a>
+  <a class="button" href="/admin-panel/users/">Users</a>
+  <a class="button" href="/admin-panel/pets/">Pets</a>
+  <a class="button" href="/admin-panel/logs/">Logs</a>
+</div>
+<table class="listing" style="width:100%;">
+  <thead>
+    <tr>
+      <th>UID</th>
+      <th>Name</th>
+      <th>Email</th>
+      <th>Number</th>
+      <th>Phone Verified</th>
+      <th>Created</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td><code>{{ u.uid }}</code></td>
+      <td>{{ u.name }}</td>
+      <td>{{ u.email }}</td>
+      <td>{{ u.number }}</td>
+      <td>{{ u.phoneVerified|yesno:"Yes,No" }}</td>
+      <td>{{ u.createdAt }}</td>
+      <td>
+        <a class="button" href="/admin-panel/users/{{ u.uid }}/edit/">Edit</a>
+        <form method="post" action="/admin-panel/users/{{ u.uid }}/delete/" style="display:inline;">{% csrf_token %}
+          <button class="button" onclick="return confirm('Delete user and related data?')">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6">No users.</td></tr>
+    {% endfor %}
+  </tbody>
+  </table>
+{% endblock %}
+
+

@@ -1,0 +1,44 @@
+{% extends "admin/base.html" %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  body.sidebar-collapsed #nav-sidebar { width: 52px; }
+  body.sidebar-collapsed #nav-sidebar .app-list a { text-indent: -9999px; }
+  body.sidebar-collapsed #nav-sidebar .app-list a::after { content: '\2630'; text-indent: 0; display: block; color: #fff; }
+  #nav-sidebar { width: 260px; transition: width .2s ease; }
+  #nav-sidebar .app-list { list-style: none; margin: 0; padding: 0; }
+  #nav-sidebar .app-list li { margin: 6px 0; }
+  #nav-sidebar .app-list a {
+    display: block; padding: 8px 10px; border-radius: 6px;
+    background: #0b7285; color: #fff; text-decoration: none;
+  }
+  #nav-sidebar .app-list a:hover { background: #0c8599; }
+  .dashboard .module { box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .button { display:inline-block; padding:6px 10px; border-radius:6px; background:#0b7285; color:#fff; text-decoration:none; }
+  .button:hover { background:#0c8599; }
+  .form-row { margin: 8px 0; }
+  .form-row label { display: inline-block; width: 160px; font-weight: 600; }
+  .form-row input { width: 320px; }
+  .listing th, .listing td { padding: 8px; }
+  .submit-row .button, .submit-row .default { margin-right: 8px; }
+  .sidebar-toggle { position: sticky; top: 8px; display:block; margin-bottom:8px; background:#334155; }
+</style>
+{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="/admin-panel/dashboard/">Petmood Admin Panel</a></div>
+{% endblock %}
+
+{% block nav-sidebar %}
+<nav id="nav-sidebar">
+  <button type="button" class="button sidebar-toggle" onclick="document.body.classList.toggle('sidebar-collapsed')">Toggle</button>
+  <ul class="app-list">
+    <li><a href="/admin-panel/dashboard/">Dashboard</a></li>
+    <li><a href="/admin-panel/users/">Users</a></li>
+    <li><a href="/admin-panel/pets/">Pets</a></li>
+    <li><a href="/admin-panel/logs/">Emotion Logs</a></li>
+  </ul>
+</nav>
+{% endblock %}
+
+

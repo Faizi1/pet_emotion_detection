@@ -1,0 +1,16 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Edit Pet</h1>
+<form method="post">{% csrf_token %}
+  <div class="form-row"><label>Owner UID</label><input type="text" value="{{ pet.ownerUid }}" readonly></div>
+  <div class="form-row"><label>Pet ID</label><input type="text" value="{{ pet.id }}" readonly></div>
+  <div class="form-row"><label>Name</label><input name="name" type="text" value="{{ pet.name }}"></div>
+  <div class="form-row"><label>Gender</label><input name="gender" type="text" value="{{ pet.gender }}"></div>
+  <div class="form-row"><label>Species</label><input name="species" type="text" value="{{ pet.species }}"></div>
+  <div class="form-row"><label>Breed</label><input name="breed" type="text" value="{{ pet.breed }}"></div>
+  <div class="form-row"><label>Date of Birth</label><input name="dateOfBirth" type="text" value="{{ pet.dateOfBirth }}" placeholder="YYYY-MM-DD or timestamp"></div>
+  <div class="submit-row"><button class="default" type="submit">Save</button> <a class="button" href="/admin-panel/pets/">Cancel</a></div>
+</form>
+{% endblock %}
+
+

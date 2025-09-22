@@ -1,0 +1,63 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Pets</h1>
+<form method="get" style="margin:10px 0; display:flex; gap:8px; flex-wrap:wrap;">
+  <input type="text" name="name" placeholder="Name" value="{{ request.GET.name }}">
+  <select name="gender">
+    <option value="">Gender</option>
+    <option value="male" {% if request.GET.gender == 'male' %}selected{% endif %}>Male</option>
+    <option value="female" {% if request.GET.gender == 'female' %}selected{% endif %}>Female</option>
+  </select>
+  <select name="species">
+    <option value="">Species</option>
+    <option value="dog" {% if request.GET.species == 'dog' %}selected{% endif %}>Dog</option>
+    <option value="cat" {% if request.GET.species == 'cat' %}selected{% endif %}>Cat</option>
+  </select>
+  <input type="text" name="breed" placeholder="Breed" value="{{ request.GET.breed }}">
+  <button class="button" type="submit">Filter</button>
+  <a class="button" href="/admin-panel/pets/">Reset</a>
+</form>
+<div style="margin:8px 0;">
+  <a class="button" href="/admin-panel/dashboard/">Dashboard</a>
+  <a class="button" href="/admin-panel/users/">Users</a>
+  <a class="button" href="/admin-panel/pets/">Pets</a>
+  <a class="button" href="/admin-panel/logs/">Logs</a>
+</div>
+<table class="listing" style="width:100%;">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Owner UID</th>
+      <th>Name</th>
+      <th>Gender</th>
+      <th>Species</th>
+      <th>Breed</th>
+      <th>DOB</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in pets %}
+    <tr>
+      <td><code>{{ p.id }}</code></td>
+      <td><code>{{ p.ownerUid }}</code></td>
+      <td>{{ p.name }}</td>
+      <td>{{ p.gender }}</td>
+      <td>{{ p.species }}</td>
+      <td>{{ p.breed }}</td>
+      <td>{{ p.dateOfBirth }}</td>
+      <td>
+        <a class="button" href="/admin-panel/pets/{{ p.ownerUid }}/{{ p.id }}/edit/">Edit</a>
+        <form method="post" action="/admin-panel/pets/{{ p.ownerUid }}/{{ p.id }}/delete/" style="display:inline;">{% csrf_token %}
+          <button class="button" onclick="return confirm('Delete pet?')">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7">No pets.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+

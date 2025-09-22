@@ -1,0 +1,13 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Edit User</h1>
+<form method="post">{% csrf_token %}
+  <div class="form-row"><label>UID</label><input type="text" value="{{ user_doc.uid }}" readonly></div>
+  <div class="form-row"><label>Name</label><input name="name" type="text" value="{{ user_doc.name }}"></div>
+  <div class="form-row"><label>Number</label><input name="number" type="text" value="{{ user_doc.number }}"></div>
+  <div class="form-row"><label>Phone Verified</label><input name="phoneVerified" type="checkbox" {% if user_doc.phoneVerified %}checked{% endif %}></div>
+  <div class="submit-row"><button class="default" type="submit">Save</button> <a class="button" href="/admin-panel/users/">Cancel</a></div>
+</form>
+{% endblock %}
+
+

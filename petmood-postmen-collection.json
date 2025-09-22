@@ -1,0 +1,243 @@
+{
+    "info": {
+      "name": "Pet Emotion Detection API",
+      "_postman_id": "e7f5a1a9-5a6b-4c27-9a9c-collection",
+      "description": "Django + Firebase backend API for pet emotion detection",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+      {
+        "name": "Auth - Register",
+        "request": {
+          "method": "POST",
+          "header": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] },
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"number\": \"+15551234567\",\n  \"password\": \"secret123\",\n  \"confirmPassword\": \"secret123\"\n}"
+          }
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "let json = {};",
+                "try { json = pm.response.json(); } catch(e) {}",
+                "if (json.uid) { pm.environment.set('uid', json.uid); }"
+              ],
+              "type": "text/javascript"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Auth - Send OTP (MVP)",
+        "request": {
+          "method": "POST",
+          "header": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "url": { "raw": "{{baseUrl}}/api/auth/send-otp", "host": ["{{baseUrl}}"], "path": ["api", "auth", "send-otp"] },
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"uid\": \"{{uid}}\"\n}"
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Auth - Verify OTP (MVP)",
+        "request": {
+          "method": "POST",
+          "header": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "url": { "raw": "{{baseUrl}}/api/auth/verify-otp", "host": ["{{baseUrl}}"], "path": ["api", "auth", "verify-otp"] },
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"uid\": \"{{uid}}\",\n  \"code\": \"123456\"\n}"
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Auth - Firebase Login (REST) → Set idToken",
+        "request": {
+          "method": "POST",
+          "header": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "url": {
+            "raw": "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{webApiKey}}",
+            "protocol": "https",
+            "host": ["identitytoolkit","googleapis","com"],
+            "path": ["v1","accounts:signInWithPassword"],
+            "query": [{ "key": "key", "value": "{{webApiKey}}" }]
+          },
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"email\": \"john@example.com\",\n  \"password\": \"secret123\",\n  \"returnSecureToken\": true\n}"
+          }
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "let json = {};",
+                "try { json = pm.response.json(); } catch(e) {}",
+                "if (json.idToken) { pm.environment.set('idToken', json.idToken); }",
+                "if (json.localId) { pm.environment.set('uid', json.localId); }"
+              ],
+              "type": "text/javascript"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Auth - Verify Token (optional)",
+        "request": {
+          "method": "POST",
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "url": { "raw": "{{baseUrl}}/api/auth/verify", "host": ["{{baseUrl}}"], "path": ["api","auth","verify"] },
+          "body": { "mode": "raw", "raw": "{\n  \"idToken\": \"{{idToken}}\"\n}" }
+        },
+        "response": []
+      },
+      {
+        "name": "Auth - Forgot Password (returns link)",
+        "request": {
+          "method": "POST",
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "url": { "raw": "{{baseUrl}}/api/auth/forgot-password", "host": ["{{baseUrl}}"], "path": ["api","auth","forgot-password"] },
+          "body": { "mode": "raw", "raw": "{\n  \"email\": \"john@example.com\"\n}" }
+        },
+        "response": []
+      },
+      {
+        "name": "Me",
+        "request": {
+          "method": "GET",
+          "header": [{ "key": "Authorization", "value": "Bearer {{idToken}}" }],
+          "url": { "raw": "{{baseUrl}}/api/me", "host": ["{{baseUrl}}"], "path": ["api","me"] }
+        },
+        "response": []
+      },
+      {
+        "name": "Pets - List",
+        "request": {
+          "method": "GET",
+          "header": [{ "key": "Authorization", "value": "Bearer {{idToken}}" }],
+          "url": { "raw": "{{baseUrl}}/api/pets", "host": ["{{baseUrl}}"], "path": ["api","pets"] }
+        },
+        "response": []
+      },
+      {
+        "name": "Pets - Create",
+        "request": {
+          "method": "POST",
+          "header": [
+            { "key": "Authorization", "value": "Bearer {{idToken}}" },
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "url": { "raw": "{{baseUrl}}/api/pets", "host": ["{{baseUrl}}"], "path": ["api","pets"] },
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"name\": \"Buddy\",\n  \"gender\": \"male\",\n  \"species\": \"dog\",\n  \"breed\": \"Labrador\",\n  \"dateOfBirth\": \"2020-05-01\"\n}"
+          }
+        },
+        "response": [],
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "let json = {};",
+                "try { json = pm.response.json(); } catch(e) {}",
+                "if (json.id) { pm.environment.set('petId', json.id); }"
+              ],
+              "type": "text/javascript"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Pets - Get by Id",
+        "request": {
+          "method": "GET",
+          "header": [{ "key": "Authorization", "value": "Bearer {{idToken}}" }],
+          "url": { "raw": "{{baseUrl}}/api/pets/{{petId}}", "host": ["{{baseUrl}}"], "path": ["api","pets","{{petId}}"] }
+        },
+        "response": []
+      },
+      {
+        "name": "Pets - Update (PATCH)",
+        "request": {
+          "method": "PATCH",
+          "header": [
+            { "key": "Authorization", "value": "Bearer {{idToken}}" },
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "url": { "raw": "{{baseUrl}}/api/pets/{{petId}}", "host": ["{{baseUrl}}"], "path": ["api","pets","{{petId}}"] },
+          "body": { "mode": "raw", "raw": "{\n  \"breed\": \"Golden Retriever\"\n}" }
+        },
+        "response": []
+      },
+      {
+        "name": "Pets - Delete",
+        "request": {
+          "method": "DELETE",
+          "header": [{ "key": "Authorization", "value": "Bearer {{idToken}}" }],
+          "url": { "raw": "{{baseUrl}}/api/pets/{{petId}}", "host": ["{{baseUrl}}"], "path": ["api","pets","{{petId}}"] }
+        },
+        "response": []
+      },
+      {
+        "name": "Scans - Upload (image)",
+        "request": {
+          "method": "POST",
+          "header": [{ "key": "Authorization", "value": "Bearer {{idToken}}" }],
+          "url": { "raw": "{{baseUrl}}/api/scans", "host": ["{{baseUrl}}"], "path": ["api","scans"] },
+          "body": {
+            "mode": "formdata",
+            "formdata": [
+              { "key": "petId", "value": "{{petId}}", "type": "text" },
+              { "key": "mediaType", "value": "image", "type": "text" },
+              { "key": "file", "type": "file", "src": [] }
+            ]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "History - List",
+        "request": {
+          "method": "GET",
+          "header": [{ "key": "Authorization", "value": "Bearer {{idToken}}" }],
+          "url": {
+            "raw": "{{baseUrl}}/api/history?petId={{petId}}",
+            "host": ["{{baseUrl}}"],
+            "path": ["api","history"],
+            "query": [{ "key": "petId", "value": "{{petId}}" }]
+          }
+        },
+        "response": []
+      },
+      {
+        "name": "Admin - Analytics",
+        "request": {
+          "method": "GET",
+          "header": [{ "key": "Authorization", "value": "Bearer {{idToken}}" }],
+          "url": { "raw": "{{baseUrl}}/api/admin/analytics", "host": ["{{baseUrl}}"], "path": ["api","admin","analytics"] }
+        },
+        "response": []
+      }
+    ],
+    "event": [],
+    "variable": []
+  }
