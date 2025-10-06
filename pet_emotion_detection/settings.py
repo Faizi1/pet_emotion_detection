@@ -32,6 +32,10 @@ DEBUG = os.getenv('DEBUG', '1') == '1'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
+CORS_ALLOWED_ORIGINS = [
+    "https://pet-emotion-detection.onrender.com"
+]
+
 
 # Application definition
 
