@@ -30,12 +30,14 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-insecure-key')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', '1') == '1'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
-
-CORS_ALLOWED_ORIGINS = [
-    "https://pet-emotion-detection.onrender.com"
+ALLOWED_HOSTS = [
+    "pet-emotion-detection.onrender.com",
+    "localhost",
+    "127.0.0.1",
 ]
-
+CSRF_TRUSTED_ORIGINS = [
+    "https://pet-emotion-detection.onrender.com",
+]
 
 # Application definition
 
@@ -48,6 +50,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
+    'drf_yasg',
     'services',
 ]
 
@@ -129,8 +132,15 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-# CORS
-CORS_ALLOW_ALL_ORIGINS = True
+# Media (local uploads fallback)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# # CORS
+# CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "https://pet-emotion-detection.onrender.com",
+]
 
 # REST Framework
 REST_FRAMEWORK = {
@@ -146,6 +156,11 @@ REST_FRAMEWORK = {
 FIREBASE_PROJECT_ID = os.getenv('FIREBASE_PROJECT_ID', '')
 FIREBASE_STORAGE_BUCKET = os.getenv('FIREBASE_STORAGE_BUCKET', '')
 FIREBASE_CREDENTIALS_PATH = os.getenv('FIREBASE_CREDENTIALS_PATH', '')
+
+# Twilio SMS Settings
+TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID', '')
+TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', '')
+TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER', '')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
