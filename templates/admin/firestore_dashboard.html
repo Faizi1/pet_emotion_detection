@@ -1,50 +1,62 @@
 {% extends "admin/base_site.html" %}
 
 {% block content %}
-<div class="dashboard">
-  <div style="margin:8px 0;">
-    <a class="button" href="/admin-panel/dashboard/">Dashboard</a>
-    <a class="button" href="/admin-panel/users/">Users</a>
-    <a class="button" href="/admin-panel/pets/">Pets</a>
-    <a class="button" href="/admin-panel/logs/">Logs</a>
+<div class="container-fluid dashboard py-2">
+  <h1 class="h3 mb-3">PetMood Analytics</h1>
+
+  <div class="row g-3">
+    <div class="col-12 col-md-4">
+      <a href="/admin-panel/users/" class="text-decoration-none text-reset">
+        <div class="module border rounded p-3 h-100">
+          <div class="d-flex justify-content-between align-items-center">
+            <h2 class="h6 mb-0">Total Users</h2>
+          </div>
+          <p class="display-6 mb-0">{{ total_users }}</p>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-4">
+      <a href="/admin-panel/pets/" class="text-decoration-none text-reset">
+        <div class="module border rounded p-3 h-100">
+          <div class="d-flex justify-content-between align-items-center">
+            <h2 class="h6 mb-0">Total Pets</h2>
+          </div>
+          <p class="display-6 mb-0">{{ total_pets }}</p>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-4">
+      <a href="/admin-panel/logs/" class="text-decoration-none text-reset">
+        <div class="module border rounded p-3 h-100">
+          <div class="d-flex justify-content-between align-items-center">
+            <h2 class="h6 mb-0">Total Scans</h2>
+          </div>
+          <p class="display-6 mb-0">{{ total_scans }}</p>
+        </div>
+      </a>
+    </div>
   </div>
-  <h1>PetMood Analytics</h1>
-  <div style="display:flex;gap:16px;">
-    <a href="/admin-panel/users/" style="text-decoration:none;color:inherit;">
-    <div class="module" style="padding:16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;">
-      <h2>Total Users</h2>
-      <p style="font-size:24px;">{{ total_users }}</p>
-    </div>
-    </a>
-    <a href="/admin-panel/pets/" style="text-decoration:none;color:inherit;">
-    <div class="module" style="padding:16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;">
-      <h2>Total Pets</h2>
-      <p style="font-size:24px;">{{ total_pets }}</p>
-    </div>
-    </a>
-    <a href="/admin-panel/logs/" style="text-decoration:none;color:inherit;">
-    <div class="module" style="padding:16px;border:1px solid #ddd;border-radius:6px;cursor:pointer;">
-      <h2>Total Scans</h2>
-      <p style="font-size:24px;">{{ total_scans }}</p>
-    </div>
-    </a>
-  </div>
-  <div style="display:flex;gap:16px;margin-top:20px;align-items:stretch;">
-    <div class="module" style="flex:1;padding:16px;border:1px solid #ddd;border-radius:6px;min-height:320px;">
-      <h2>Scans (last 7 days)</h2>
-      <div style="height:260px;">
-        <canvas id="scansChart"></canvas>
+
+  <div class="row g-3 mt-1 align-items-stretch">
+    <div class="col-12 col-lg-6">
+      <div class="module border rounded p-3 h-100">
+        <h2 class="h6">Scans (last 7 days)</h2>
+        <div style="height:260px;">
+          <canvas id="scansChart"></canvas>
+        </div>
       </div>
     </div>
-    <div class="module" style="flex:1;padding:16px;border:1px solid #ddd;border-radius:6px;min-height:320px;">
-      <h2>Emotion distribution</h2>
-      <div style="height:260px;">
-        <canvas id="emotionChart"></canvas>
+    <div class="col-12 col-lg-6">
+      <div class="module border rounded p-3 h-100">
+        <h2 class="h6">Emotion distribution</h2>
+        <div style="height:260px;">
+          <canvas id="emotionChart"></canvas>
+        </div>
       </div>
     </div>
   </div>
-  <p style="margin-top:12px;">This is a simple MVP dashboard pulling counts directly from Firestore.</p>
-  <p>Access via <code>/admin-panel/dashboard/</code>.</p>
+
+  <p class="text-muted mt-3">This is a simple MVP dashboard pulling counts directly from Firestore.</p>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
