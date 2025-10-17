@@ -1,0 +1,348 @@
+{% extends "admin/base_site.html" %}
+
+{% block page_title %}Community Management{% endblock %}
+
+{% block admin_content %}
+<!-- Header Section -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h2 class="card-title mb-2">
+              <i class="fas fa-comments text-primary"></i>
+              Community Posts Management
+            </h2>
+            <p class="text-muted mb-0">Manage community posts, comments, likes, and shares</p>
+          </div>
+          <div class="text-end">
+            <span class="badge bg-primary fs-6">{{ posts|length }} Total Posts</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Search and Filter Section -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-search text-info"></i>
+          Search & Filter
+        </h5>
+      </div>
+      <div class="card-body">
+        <form method="get" class="row g-3">
+          <div class="col-md-3">
+            <label for="author" class="form-label">Author</label>
+            <input type="text" 
+                   class="form-control" 
+                   id="author" 
+                   name="author" 
+                   placeholder="Search by author name" 
+                   value="{{ request.GET.author }}">
+          </div>
+          <div class="col-md-3">
+            <label for="content" class="form-label">Content</label>
+            <input type="text" 
+                   class="form-control" 
+                   id="content" 
+                   name="content" 
+                   placeholder="Search in content" 
+                   value="{{ request.GET.content }}">
+          </div>
+          <div class="col-md-2">
+            <label for="isPublic" class="form-label">Visibility</label>
+            <select class="form-select" id="isPublic" name="isPublic">
+              <option value="">All Posts</option>
+              <option value="true" {% if request.GET.isPublic == 'true' %}selected{% endif %}>Public</option>
+              <option value="false" {% if request.GET.isPublic == 'false' %}selected{% endif %}>Private</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label for="minLikes" class="form-label">Min Likes</label>
+            <input type="number" 
+                   class="form-control" 
+                   id="minLikes" 
+                   name="minLikes" 
+                   placeholder="0" 
+                   value="{{ request.GET.minLikes }}" 
+                   min="0">
+          </div>
+          <div class="col-md-2 d-flex align-items-end">
+            <button class="btn btn-primary me-2" type="submit">
+              <i class="fas fa-search"></i> Search
+            </button>
+            <a class="btn btn-outline-secondary" href="/admin-panel/community/">
+              <i class="fas fa-refresh"></i> Reset
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Posts Table -->
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-table text-success"></i>
+          Community Posts
+        </h5>
+      </div>
+      <div class="card-body p-0">
+        {% if posts %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="border-0 mobile-show">
+                  <i class="fas fa-user text-muted"></i>
+                  Author
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-id-card text-muted"></i>
+                  Post ID
+                </th>
+                <th class="border-0 mobile-hide">
+                  <i class="fas fa-comment text-muted"></i>
+                  Content
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-image text-muted"></i>
+                  Media
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-xs">
+                  <i class="fas fa-eye text-muted"></i>
+                  Visibility
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-xs">
+                  <i class="fas fa-heart text-muted"></i>
+                  Engagement
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-calendar text-muted"></i>
+                  Created
+                </th>
+                <th class="border-0 text-center mobile-show">
+                  <i class="fas fa-cogs text-muted"></i>
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for post in posts %}
+              <tr>
+                <td>
+                  <code class="bg-light px-2 py-1 rounded">{{ post.id|truncatechars:12 }}</code>
+                </td>
+                <td>
+                  <div class="d-flex align-items-center">
+                    <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center me-3" 
+                         style="width: 40px; height: 40px;">
+                      <i class="fas fa-user text-white"></i>
+                    </div>
+                    <div>
+                      <h6 class="mb-0">{{ post.authorName|default:"Unknown" }}</h6>
+                      <small class="text-muted">{{ post.authorId|truncatechars:12 }}</small>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div style="max-width: 300px;">
+                    <p class="mb-1">{{ post.content|truncatechars:100 }}</p>
+                    {% if post.tags %}
+                      <div class="mt-1">
+                        {% for tag in post.tags %}
+                          <span class="badge bg-light text-dark me-1">{{ tag }}</span>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  {% if post.images %}
+                    <div class="d-flex flex-wrap gap-1">
+                      {% for image in post.images %}
+                        {% if image %}
+                          <a href="{{ image }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-image"></i>
+                          </a>
+                        {% endif %}
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <span class="text-muted">No Media</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if post.isPublic %}
+                    <span class="badge bg-success">
+                      <i class="fas fa-globe"></i> Public
+                    </span>
+                  {% else %}
+                    <span class="badge bg-warning">
+                      <i class="fas fa-lock"></i> Private
+                    </span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="d-flex flex-column">
+                    <div class="d-flex align-items-center mb-1">
+                      <i class="fas fa-heart text-danger me-1"></i>
+                      <span class="me-3">{{ post.likesCount|default:0 }}</span>
+                      <i class="fas fa-comment text-info me-1"></i>
+                      <span class="me-3">{{ post.commentsCount|default:0 }}</span>
+                      <i class="fas fa-share text-success me-1"></i>
+                      <span>{{ post.sharesCount|default:0 }}</span>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <small class="text-muted">
+                    {{ post.createdAt|date:"M d, Y H:i"|default:"N/A" }}
+                  </small>
+                </td>
+                <td class="text-center">
+                  <div class="btn-group" role="group">
+                    <button class="btn btn-sm btn-outline-info" 
+                            onclick="viewPost('{{ post.id }}')"
+                            title="View Details">
+                      <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning" 
+                            onclick="editPost('{{ post.id }}')"
+                            title="Edit Post">
+                      <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" 
+                            onclick="deletePost('{{ post.id }}', '{{ post.content|truncatechars:30 }}')"
+                            title="Delete Post">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <i class="fas fa-comments"></i>
+          <h3>No Posts Found</h3>
+          <p>No community posts match your current search criteria.</p>
+          <a href="/admin-panel/community/" class="btn btn-primary">
+            <i class="fas fa-refresh"></i> Reset Filters
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Post Details Modal -->
+<div class="modal fade" id="postModal" tabindex="-1" aria-labelledby="postModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="postModalLabel">
+          <i class="fas fa-comment text-primary"></i>
+          Post Details
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="postModalBody">
+        <!-- Post details will be loaded here -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalLabel">
+          <i class="fas fa-exclamation-triangle text-warning"></i>
+          Confirm Delete
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete this post?</p>
+        <p class="text-muted">This action cannot be undone and will also delete all related comments, likes, and shares.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form id="deleteForm" method="post" style="display: inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger">
+            <i class="fas fa-trash"></i> Delete Post
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function viewPost(postId) {
+  // This would typically fetch post details via AJAX
+  document.getElementById('postModalBody').innerHTML = `
+    <div class="text-center">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      <p class="mt-2">Loading post details...</p>
+    </div>
+  `;
+  
+  const postModal = new bootstrap.Modal(document.getElementById('postModal'));
+  postModal.show();
+  
+  // Simulate loading (replace with actual AJAX call)
+  setTimeout(() => {
+    document.getElementById('postModalBody').innerHTML = `
+      <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        Post details for ID: ${postId}
+        <br><small>This would show full post content, comments, and engagement metrics.</small>
+      </div>
+    `;
+  }, 1000);
+}
+
+function editPost(postId) {
+  // Redirect to edit page or open edit modal
+  window.location.href = `/admin-panel/community/${postId}/edit/`;
+}
+
+function deletePost(postId, content) {
+  document.getElementById('deleteForm').action = `/admin-panel/community/${postId}/delete/`;
+  
+  const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  deleteModal.show();
+}
+
+// Add some interactive effects
+document.querySelectorAll('.table tbody tr').forEach(row => {
+  row.addEventListener('mouseenter', function() {
+    this.style.backgroundColor = '#f8f9fa';
+  });
+  
+  row.addEventListener('mouseleave', function() {
+    this.style.backgroundColor = '';
+  });
+});
+</script>
+{% endblock %}

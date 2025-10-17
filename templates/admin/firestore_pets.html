@@ -1,63 +1,352 @@
 {% extends "admin/base_site.html" %}
-{% block content %}
-<h1>Pets</h1>
-<form method="get" style="margin:10px 0; display:flex; gap:8px; flex-wrap:wrap;">
-  <input type="text" name="name" placeholder="Name" value="{{ request.GET.name }}">
-  <select name="gender">
-    <option value="">Gender</option>
-    <option value="male" {% if request.GET.gender == 'male' %}selected{% endif %}>Male</option>
-    <option value="female" {% if request.GET.gender == 'female' %}selected{% endif %}>Female</option>
-  </select>
-  <select name="species">
-    <option value="">Species</option>
-    <option value="dog" {% if request.GET.species == 'dog' %}selected{% endif %}>Dog</option>
-    <option value="cat" {% if request.GET.species == 'cat' %}selected{% endif %}>Cat</option>
-  </select>
-  <input type="text" name="breed" placeholder="Breed" value="{{ request.GET.breed }}">
-  <button class="button" type="submit">Filter</button>
-  <a class="button" href="/admin-panel/pets/">Reset</a>
-</form>
-<div style="margin:8px 0;">
-  <a class="button" href="/admin-panel/dashboard/">Dashboard</a>
-  <a class="button" href="/admin-panel/users/">Users</a>
-  <a class="button" href="/admin-panel/pets/">Pets</a>
-  <a class="button" href="/admin-panel/logs/">Logs</a>
+
+{% block page_title %}Pets Management{% endblock %}
+
+{% block admin_content %}
+<!-- Header Section -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h2 class="card-title mb-2">
+              <i class="fas fa-paw text-success"></i>
+              Pets Management
+            </h2>
+            <p class="text-muted mb-0">Manage pet profiles and information</p>
+          </div>
+          <div class="text-end">
+            <span class="badge bg-success fs-6">{{ pets|length }} Total Pets</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
-<table class="listing" style="width:100%;">
-  <thead>
-    <tr>
-      <th>ID</th>
-      <th>Owner UID</th>
-      <th>Name</th>
-      <th>Gender</th>
-      <th>Species</th>
-      <th>Breed</th>
-      <th>DOB</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for p in pets %}
-    <tr>
-      <td><code>{{ p.id }}</code></td>
-      <td><code>{{ p.ownerUid }}</code></td>
-      <td>{{ p.name }}</td>
-      <td>{{ p.gender }}</td>
-      <td>{{ p.species }}</td>
-      <td>{{ p.breed }}</td>
-      <td>{{ p.dateOfBirth }}</td>
-      <td>
-        <a class="button" href="/admin-panel/pets/{{ p.ownerUid }}/{{ p.id }}/edit/">Edit</a>
-        <form method="post" action="/admin-panel/pets/{{ p.ownerUid }}/{{ p.id }}/delete/" style="display:inline;">{% csrf_token %}
-          <button class="button" onclick="return confirm('Delete pet?')">Delete</button>
+
+<!-- Search and Filter Section -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-search text-info"></i>
+          Search & Filter
+        </h5>
+      </div>
+      <div class="card-body">
+        <form method="get" class="row g-3">
+          <div class="col-md-3">
+            <label for="name" class="form-label">Pet Name</label>
+            <input type="text" 
+                   class="form-control" 
+                   id="name" 
+                   name="name" 
+                   placeholder="Search by pet name" 
+                   value="{{ request.GET.name }}">
+          </div>
+          <div class="col-md-2">
+            <label for="gender" class="form-label">Gender</label>
+            <select class="form-select" id="gender" name="gender">
+              <option value="">All Genders</option>
+              <option value="male" {% if request.GET.gender == 'male' %}selected{% endif %}>Male</option>
+              <option value="female" {% if request.GET.gender == 'female' %}selected{% endif %}>Female</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label for="species" class="form-label">Species</label>
+            <select class="form-select" id="species" name="species">
+              <option value="">All Species</option>
+              <option value="dog" {% if request.GET.species == 'dog' %}selected{% endif %}>Dog</option>
+              <option value="cat" {% if request.GET.species == 'cat' %}selected{% endif %}>Cat</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label for="breed" class="form-label">Breed</label>
+            <input type="text" 
+                   class="form-control" 
+                   id="breed" 
+                   name="breed" 
+                   placeholder="Search by breed" 
+                   value="{{ request.GET.breed }}">
+          </div>
+          <div class="col-md-2 d-flex align-items-end">
+            <button class="btn btn-primary me-2" type="submit">
+              <i class="fas fa-search"></i> Search
+            </button>
+            <a class="btn btn-outline-secondary" href="/admin-panel/pets/">
+              <i class="fas fa-refresh"></i> Reset
+            </a>
+          </div>
         </form>
-      </td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="7">No pets.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Pets Table -->
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-table text-success"></i>
+          Pets List
+        </h5>
+      </div>
+      <div class="card-body p-0">
+        {% if pets %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="border-0 mobile-show">
+                  <i class="fas fa-paw text-muted"></i>
+                  Pet Name
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-id-card text-muted"></i>
+                  Pet ID
+                </th>
+                <th class="border-0 mobile-hide">
+                  <i class="fas fa-user text-muted"></i>
+                  Owner
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-venus-mars text-muted"></i>
+                  Gender
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-tag text-muted"></i>
+                  Species
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-xs">
+                  <i class="fas fa-dna text-muted"></i>
+                  Breed
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-xs">
+                  <i class="fas fa-birthday-cake text-muted"></i>
+                  Date of Birth
+                </th>
+                <th class="border-0 text-center mobile-show">
+                  <i class="fas fa-cogs text-muted"></i>
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in pets %}
+              <tr>
+                <td class="mobile-show">
+                  <div class="d-flex align-items-center">
+                    <div class="bg-success rounded-circle d-flex align-items-center justify-content-center me-3" 
+                         style="width: 40px; height: 40px;">
+                      <i class="fas fa-paw text-white"></i>
+                    </div>
+                    <div>
+                      <h6 class="mb-0">{{ p.name|default:"N/A" }}</h6>
+                      <small class="text-muted">{{ p.ownerUid|truncatechars:12 }}</small>
+                    </div>
+                  </div>
+                </td>
+                <td class="mobile-hide mobile-hide-sm">
+                  <code class="bg-light px-2 py-1 rounded">{{ p.id|truncatechars:12 }}</code>
+                </td>
+                <td class="mobile-hide">
+                  <div class="d-flex align-items-center">
+                    <div class="bg-info rounded-circle d-flex align-items-center justify-content-center me-3" 
+                         style="width: 35px; height: 35px;">
+                      <i class="fas fa-user text-white" style="font-size: 0.8rem;"></i>
+                    </div>
+                    <div>
+                      <h6 class="mb-0">{{ p.ownerUid|truncatechars:12 }}</h6>
+                    </div>
+                  </div>
+                </td>
+                <td class="mobile-hide mobile-hide-sm">
+                  {% if p.gender == 'male' %}
+                    <span class="badge bg-primary">
+                      <i class="fas fa-mars"></i> Male
+                    </span>
+                  {% elif p.gender == 'female' %}
+                    <span class="badge bg-pink">
+                      <i class="fas fa-venus"></i> Female
+                    </span>
+                  {% else %}
+                    <span class="text-muted">N/A</span>
+                  {% endif %}
+                </td>
+                <td class="mobile-hide mobile-hide-sm">
+                  {% if p.species == 'dog' %}
+                    <span class="badge bg-warning">
+                      <i class="fas fa-dog"></i> Dog
+                    </span>
+                  {% elif p.species == 'cat' %}
+                    <span class="badge bg-info">
+                      <i class="fas fa-cat"></i> Cat
+                    </span>
+                  {% else %}
+                    <span class="text-muted">{{ p.species|default:"N/A" }}</span>
+                  {% endif %}
+                </td>
+                <td class="mobile-hide mobile-hide-xs">
+                  <span class="text-muted">{{ p.breed|default:"N/A" }}</span>
+                </td>
+                <td class="mobile-hide mobile-hide-xs">
+                  <small class="text-muted">
+                    {{ p.dateOfBirth|date:"M d, Y"|default:"N/A" }}
+                  </small>
+                </td>
+                <td class="text-center mobile-show">
+                  <div class="btn-group" role="group">
+                    <a class="btn btn-sm btn-outline-primary" 
+                       href="/admin-panel/pets/{{ p.ownerUid }}/{{ p.id }}/edit/"
+                       title="Edit Pet">
+                      <i class="fas fa-edit"></i>
+                    </a>
+                    <button class="btn btn-sm btn-outline-danger" 
+                            onclick="deletePet('{{ p.ownerUid }}', '{{ p.id }}', '{{ p.name|default:"this pet" }}')"
+                            title="Delete Pet">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- Mobile Card Layout for Small Screens -->
+        <div class="mobile-cards">
+          {% for p in pets %}
+          <div class="mobile-card">
+            <div class="mobile-card-header">
+              <div class="d-flex align-items-center">
+                <div class="bg-success rounded-circle d-flex align-items-center justify-content-center me-3" 
+                     style="width: 40px; height: 40px;">
+                  <i class="fas fa-paw text-white"></i>
+                </div>
+                <div>
+                  <h6 class="mb-0">{{ p.name|default:"N/A" }}</h6>
+                  <small class="text-muted">{{ p.ownerUid|truncatechars:12 }}</small>
+                </div>
+              </div>
+              <div class="btn-group" role="group">
+                <a class="btn btn-sm btn-outline-primary" 
+                   href="/admin-panel/pets/{{ p.ownerUid }}/{{ p.id }}/edit/"
+                   title="Edit Pet">
+                  <i class="fas fa-edit"></i>
+                </a>
+                <button class="btn btn-sm btn-outline-danger" 
+                        onclick="deletePet('{{ p.ownerUid }}', '{{ p.id }}', '{{ p.name|default:"this pet" }}')"
+                        title="Delete Pet">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+            <div class="mobile-card-body">
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Pet ID</span>
+                <span class="mobile-card-value">{{ p.id|truncatechars:12 }}</span>
+              </div>
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Gender</span>
+                <span class="mobile-card-value">
+                  {% if p.gender == 'male' %}
+                    <span class="badge bg-primary">Male</span>
+                  {% elif p.gender == 'female' %}
+                    <span class="badge bg-pink">Female</span>
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </span>
+              </div>
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Species</span>
+                <span class="mobile-card-value">
+                  {% if p.species == 'dog' %}
+                    <span class="badge bg-warning">Dog</span>
+                  {% elif p.species == 'cat' %}
+                    <span class="badge bg-info">Cat</span>
+                  {% else %}
+                    {{ p.species|default:"N/A" }}
+                  {% endif %}
+                </span>
+              </div>
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Birth Date</span>
+                <span class="mobile-card-value">{{ p.dateOfBirth|date:"M d, Y"|default:"N/A" }}</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        
+        {% else %}
+        <div class="empty-state">
+          <i class="fas fa-paw"></i>
+          <h3>No Pets Found</h3>
+          <p>No pets match your current search criteria.</p>
+          <a href="/admin-panel/pets/" class="btn btn-primary">
+            <i class="fas fa-refresh"></i> Reset Filters
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalLabel">
+          <i class="fas fa-exclamation-triangle text-warning"></i>
+          Confirm Delete
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete <strong id="petName"></strong>?</p>
+        <p class="text-muted">This action cannot be undone and will also delete all related data (emotion logs, etc.).</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form id="deleteForm" method="post" style="display: inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger">
+            <i class="fas fa-trash"></i> Delete Pet
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function deletePet(ownerUid, petId, name) {
+  document.getElementById('petName').textContent = name;
+  document.getElementById('deleteForm').action = '/admin-panel/pets/' + ownerUid + '/' + petId + '/delete/';
+  
+  const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  deleteModal.show();
+}
+
+// Add some interactive effects
+document.querySelectorAll('.table tbody tr').forEach(row => {
+  row.addEventListener('mouseenter', function() {
+    this.style.backgroundColor = '#f8f9fa';
+  });
+  
+  row.addEventListener('mouseleave', function() {
+    this.style.backgroundColor = '';
+  });
+});
+</script>
 {% endblock %}
 
 

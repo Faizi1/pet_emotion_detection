@@ -79,6 +79,8 @@ class FirestoreDashboardAdmin(AdminSite):
             path('pets/<str:owner_uid>/<str:pet_id>/delete/', self.firestore_pet_delete_view, name='pet-delete'),
             path('logs/', self.firestore_logs_view, name='logs'),
             path('logs/<str:owner_uid>/<str:log_id>/delete/', self.firestore_log_delete_view, name='log-delete'),
+            path('community/', self.firestore_community_view, name='community'),
+            path('support/', self.firestore_support_view, name='support'),
             # Legacy redirects to preserve existing links
             path('firestore-dashboard/', lambda request: redirect('/admin-panel/dashboard/')),
             path('firestore-users/', lambda request: redirect('/admin-panel/users/')),
@@ -240,6 +242,71 @@ class FirestoreDashboardAdmin(AdminSite):
         db = get_firestore()
         db.collection('users').document(owner_uid).collection('emotion_logs').document(log_id).delete()
         return redirect('/dashboard/logs/')
+
+    @method_decorator(staff_member_required)
+    def firestore_community_view(self, request):
+        db = get_firestore()
+        posts = []
+        author_q = (request.GET.get('author') or '').strip().lower()
+        content_q = (request.GET.get('content') or '').strip().lower()
+        is_public_q = request.GET.get('isPublic')
+        min_likes_q = request.GET.get('minLikes')
+        min_likes = int(min_likes_q) if min_likes_q else 0
+        
+        for post_doc in db.collection('community_posts').stream():
+            post_data = post_doc.to_dict() or {}
+            post_data['id'] = post_doc.id
+            
+            # Apply filters
+            if author_q and author_q not in (post_data.get('authorName') or '').lower():
+                continue
+            if content_q and content_q not in (post_data.get('content') or '').lower():
+                continue
+            if is_public_q and str(post_data.get('isPublic', '')).lower() != is_public_q:
+                continue
+            if min_likes > 0 and (post_data.get('likesCount') or 0) < min_likes:
+                continue
+            
+            posts.append(post_data)
+        
+        context = {**self.each_context(request), 'posts': posts}
+        return TemplateResponse(request, 'admin/firestore_community.html', context)
+
+    @method_decorator(staff_member_required)
+    def firestore_support_view(self, request):
+        db = get_firestore()
+        support_messages = []
+        email_q = (request.GET.get('email') or '').strip().lower()
+        status_q = (request.GET.get('status') or '').strip().lower()
+        priority_q = (request.GET.get('priority') or '').strip().lower()
+        
+        for msg_doc in db.collection('support_messages').stream():
+            msg_data = msg_doc.to_dict() or {}
+            msg_data['id'] = msg_doc.id
+            
+            # Apply filters
+            if email_q and email_q not in (msg_data.get('email') or '').lower():
+                continue
+            if status_q and status_q != (msg_data.get('status') or '').lower():
+                continue
+            if priority_q and priority_q != (msg_data.get('priority') or '').lower():
+                continue
+            
+            support_messages.append(msg_data)
+        
+        # Calculate statistics
+        pending_count = sum(1 for msg in support_messages if msg.get('status') == 'pending')
+        resolved_count = sum(1 for msg in support_messages if msg.get('status') == 'resolved')
+        closed_count = sum(1 for msg in support_messages if msg.get('status') == 'closed')
+        
+        context = {
+            **self.each_context(request), 
+            'support_messages': support_messages,
+            'pending_count': pending_count,
+            'resolved_count': resolved_count,
+            'closed_count': closed_count,
+        }
+        return TemplateResponse(request, 'admin/firestore_support.html', context)
 
 
 custom_admin_site = FirestoreDashboardAdmin(name='custom_admin')

@@ -1,60 +1,402 @@
 {% extends "admin/base_site.html" %}
-{% block content %}
-<h1>Emotion Logs</h1>
-<form method="get" style="margin:10px 0; display:flex; gap:8px; flex-wrap:wrap;">
-  <input type="text" name="petId" placeholder="Pet ID" value="{{ request.GET.petId }}">
-  <select name="emotion">
-    <option value="">Emotion</option>
-    <option value="happy" {% if request.GET.emotion == 'happy' %}selected{% endif %}>Happy</option>
-    <option value="sad" {% if request.GET.emotion == 'sad' %}selected{% endif %}>Sad</option>
-    <option value="anxious" {% if request.GET.emotion == 'anxious' %}selected{% endif %}>Anxious</option>
-    <option value="excited" {% if request.GET.emotion == 'excited' %}selected{% endif %}>Excited</option>
-    <option value="neutral" {% if request.GET.emotion == 'neutral' %}selected{% endif %}>Neutral</option>
-  </select>
-  <input type="number" name="minConfidence" placeholder="Min Confidence" value="{{ request.GET.minConfidence }}" step="0.01" min="0" max="1">
-  <button class="button" type="submit">Filter</button>
-  <a class="button" href="/admin-panel/logs/">Reset</a>
-</form>
-<div style="margin:8px 0;">
-  <a class="button" href="/admin-panel/dashboard/">Dashboard</a>
-  <a class="button" href="/admin-panel/users/">Users</a>
-  <a class="button" href="/admin-panel/pets/">Pets</a>
-  <a class="button" href="/admin-panel/logs/">Logs</a>
+
+{% block page_title %}Emotion Logs{% endblock %}
+
+{% block admin_content %}
+<!-- Header Section -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h2 class="card-title mb-2">
+              <i class="fas fa-chart-line text-warning"></i>
+              Emotion Detection Logs
+            </h2>
+            <p class="text-muted mb-0">Monitor and analyze pet emotion detection results</p>
+          </div>
+          <div class="text-end">
+            <span class="badge bg-warning fs-6">{{ logs|length }} Total Logs</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
-<table class="listing" style="width:100%;">
-  <thead>
-    <tr>
-      <th>ID</th>
-      <th>Owner UID</th>
-      <th>Pet ID</th>
-      <th>Timestamp</th>
-      <th>Emotion</th>
-      <th>Confidence</th>
-      <th>Media</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for l in logs %}
-    <tr>
-      <td><code>{{ l.id }}</code></td>
-      <td><code>{{ l.ownerUid }}</code></td>
-      <td>{{ l.petId }}</td>
-      <td>{{ l.timestamp }}</td>
-      <td>{{ l.emotion }}</td>
-      <td>{{ l.confidence }}</td>
-      <td>{% if l.mediaUrl %}<a href="{{ l.mediaUrl }}" target="_blank">open</a>{% endif %}</td>
-      <td>
-        <form method="post" action="/admin-panel/logs/{{ l.ownerUid }}/{{ l.id }}/delete/" style="display:inline;">{% csrf_token %}
-          <button class="button" onclick="return confirm('Delete log?')">Delete</button>
+
+<!-- Search and Filter Section -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-search text-info"></i>
+          Search & Filter
+        </h5>
+      </div>
+      <div class="card-body">
+        <form method="get" class="row g-3">
+          <div class="col-md-3">
+            <label for="petId" class="form-label">Pet ID</label>
+            <input type="text" 
+                   class="form-control" 
+                   id="petId" 
+                   name="petId" 
+                   placeholder="Search by Pet ID" 
+                   value="{{ request.GET.petId }}">
+          </div>
+          <div class="col-md-2">
+            <label for="emotion" class="form-label">Emotion</label>
+            <select class="form-select" id="emotion" name="emotion">
+              <option value="">All Emotions</option>
+              <option value="happy" {% if request.GET.emotion == 'happy' %}selected{% endif %}>Happy</option>
+              <option value="sad" {% if request.GET.emotion == 'sad' %}selected{% endif %}>Sad</option>
+              <option value="anxious" {% if request.GET.emotion == 'anxious' %}selected{% endif %}>Anxious</option>
+              <option value="excited" {% if request.GET.emotion == 'excited' %}selected{% endif %}>Excited</option>
+              <option value="neutral" {% if request.GET.emotion == 'neutral' %}selected{% endif %}>Neutral</option>
+              <option value="calm" {% if request.GET.emotion == 'calm' %}selected{% endif %}>Calm</option>
+              <option value="aggressive" {% if request.GET.emotion == 'aggressive' %}selected{% endif %}>Aggressive</option>
+              <option value="playful" {% if request.GET.emotion == 'playful' %}selected{% endif %}>Playful</option>
+              <option value="sleepy" {% if request.GET.emotion == 'sleepy' %}selected{% endif %}>Sleepy</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label for="minConfidence" class="form-label">Min Confidence</label>
+            <input type="number" 
+                   class="form-control" 
+                   id="minConfidence" 
+                   name="minConfidence" 
+                   placeholder="0.0" 
+                   value="{{ request.GET.minConfidence }}" 
+                   step="0.01" 
+                   min="0" 
+                   max="1">
+          </div>
+          <div class="col-md-2">
+            <label for="dateFrom" class="form-label">From Date</label>
+            <input type="date" 
+                   class="form-control" 
+                   id="dateFrom" 
+                   name="dateFrom" 
+                   value="{{ request.GET.dateFrom }}">
+          </div>
+          <div class="col-md-2">
+            <label for="dateTo" class="form-label">To Date</label>
+            <input type="date" 
+                   class="form-control" 
+                   id="dateTo" 
+                   name="dateTo" 
+                   value="{{ request.GET.dateTo }}">
+          </div>
+          <div class="col-md-1 d-flex align-items-end">
+            <button class="btn btn-primary me-2" type="submit">
+              <i class="fas fa-search"></i>
+            </button>
+            <a class="btn btn-outline-secondary" href="/admin-panel/logs/">
+              <i class="fas fa-refresh"></i>
+            </a>
+          </div>
         </form>
-      </td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="7">No logs.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Logs Table -->
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-table text-success"></i>
+          Emotion Detection Logs
+        </h5>
+      </div>
+      <div class="card-body p-0">
+        {% if logs %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="border-0 mobile-show">
+                  <i class="fas fa-heart text-muted"></i>
+                  Emotion
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-id-card text-muted"></i>
+                  Log ID
+                </th>
+                <th class="border-0 mobile-hide">
+                  <i class="fas fa-user text-muted"></i>
+                  Owner
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-paw text-muted"></i>
+                  Pet ID
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-xs">
+                  <i class="fas fa-calendar text-muted"></i>
+                  Timestamp
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-xs">
+                  <i class="fas fa-percentage text-muted"></i>
+                  Confidence
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-image text-muted"></i>
+                  Media
+                </th>
+                <th class="border-0 text-center">
+                  <i class="fas fa-cogs text-muted"></i>
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for l in logs %}
+              <tr>
+                <td class="mobile-show">
+                  <div class="d-flex align-items-center">
+                    {% if l.emotion == 'happy' %}
+                      <span class="badge bg-success me-2">
+                        <i class="fas fa-smile"></i> Happy
+                      </span>
+                    {% elif l.emotion == 'sad' %}
+                      <span class="badge bg-danger me-2">
+                        <i class="fas fa-frown"></i> Sad
+                      </span>
+                    {% elif l.emotion == 'anxious' %}
+                      <span class="badge bg-warning me-2">
+                        <i class="fas fa-exclamation-triangle"></i> Anxious
+                      </span>
+                    {% elif l.emotion == 'excited' %}
+                      <span class="badge bg-primary me-2">
+                        <i class="fas fa-star"></i> Excited
+                      </span>
+                    {% elif l.emotion == 'neutral' %}
+                      <span class="badge bg-secondary me-2">
+                        <i class="fas fa-minus"></i> Neutral
+                      </span>
+                    {% elif l.emotion == 'calm' %}
+                      <span class="badge bg-info me-2">
+                        <i class="fas fa-leaf"></i> Calm
+                      </span>
+                    {% elif l.emotion == 'aggressive' %}
+                      <span class="badge bg-danger me-2">
+                        <i class="fas fa-angry"></i> Aggressive
+                      </span>
+                    {% elif l.emotion == 'playful' %}
+                      <span class="badge bg-success me-2">
+                        <i class="fas fa-gamepad"></i> Playful
+                      </span>
+                    {% elif l.emotion == 'sleepy' %}
+                      <span class="badge bg-secondary me-2">
+                        <i class="fas fa-bed"></i> Sleepy
+                      </span>
+                    {% else %}
+                      <span class="badge bg-light text-dark me-2">{{ l.emotion|title }}</span>
+                    {% endif %}
+                    <small class="text-muted">{{ l.confidence|floatformat:2 }}</small>
+                  </div>
+                </td>
+                <td class="mobile-hide mobile-hide-sm">
+                  <code class="bg-light px-2 py-1 rounded">{{ l.id|truncatechars:12 }}</code>
+                </td>
+                <td class="mobile-hide">
+                  <div class="d-flex align-items-center">
+                    <div class="bg-info rounded-circle d-flex align-items-center justify-content-center me-3" 
+                         style="width: 35px; height: 35px;">
+                      <i class="fas fa-user text-white" style="font-size: 0.8rem;"></i>
+                    </div>
+                    <div>
+                      <h6 class="mb-0">{{ l.ownerUid|truncatechars:12 }}</h6>
+                    </div>
+                  </div>
+                </td>
+                <td class="mobile-hide mobile-hide-sm">
+                  <span class="badge bg-secondary">{{ l.petId|truncatechars:8 }}</span>
+                </td>
+                <td class="mobile-hide mobile-hide-xs">
+                  <small class="text-muted">
+                    {{ l.timestamp|date:"M d, Y H:i"|default:"N/A" }}
+                  </small>
+                </td>
+                <td class="mobile-hide mobile-hide-xs">
+                  <div class="d-flex align-items-center">
+                    <div class="progress me-2" style="width: 60px; height: 8px;">
+                      <div class="progress-bar 
+                        {% if l.confidence >= 0.8 %}bg-success
+                        {% elif l.confidence >= 0.6 %}bg-warning
+                        {% else %}bg-danger{% endif %}" 
+                        style="width: {% widthratio l.confidence 1 100 %}%">
+                      </div>
+                    </div>
+                    <small class="text-muted">{{ l.confidence|floatformat:2 }}</small>
+                  </div>
+                </td>
+                <td class="mobile-hide mobile-hide-sm">
+                  {% if l.mediaUrl %}
+                    <a href="{{ l.mediaUrl }}" 
+                       target="_blank" 
+                       class="btn btn-sm btn-outline-primary"
+                       title="View Media">
+                      <i class="fas fa-external-link-alt"></i>
+                    </a>
+                  {% else %}
+                    <span class="text-muted">No Media</span>
+                  {% endif %}
+                </td>
+                <td class="text-center mobile-show">
+                  <button class="btn btn-sm btn-outline-danger" 
+                          onclick="deleteLog('{{ l.ownerUid }}', '{{ l.id }}')"
+                          title="Delete Log">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- Mobile Card Layout for Small Screens -->
+        <div class="mobile-cards">
+          {% for l in logs %}
+          <div class="mobile-card">
+            <div class="mobile-card-header">
+              <div class="d-flex align-items-center">
+                {% if l.emotion == 'happy' %}
+                  <span class="badge bg-success me-2">
+                    <i class="fas fa-smile"></i> Happy
+                  </span>
+                {% elif l.emotion == 'sad' %}
+                  <span class="badge bg-danger me-2">
+                    <i class="fas fa-frown"></i> Sad
+                  </span>
+                {% elif l.emotion == 'anxious' %}
+                  <span class="badge bg-warning me-2">
+                    <i class="fas fa-exclamation-triangle"></i> Anxious
+                  </span>
+                {% elif l.emotion == 'excited' %}
+                  <span class="badge bg-primary me-2">
+                    <i class="fas fa-star"></i> Excited
+                  </span>
+                {% elif l.emotion == 'neutral' %}
+                  <span class="badge bg-secondary me-2">
+                    <i class="fas fa-minus"></i> Neutral
+                  </span>
+                {% elif l.emotion == 'calm' %}
+                  <span class="badge bg-info me-2">
+                    <i class="fas fa-leaf"></i> Calm
+                  </span>
+                {% elif l.emotion == 'aggressive' %}
+                  <span class="badge bg-danger me-2">
+                    <i class="fas fa-angry"></i> Aggressive
+                  </span>
+                {% elif l.emotion == 'playful' %}
+                  <span class="badge bg-success me-2">
+                    <i class="fas fa-gamepad"></i> Playful
+                  </span>
+                {% elif l.emotion == 'sleepy' %}
+                  <span class="badge bg-secondary me-2">
+                    <i class="fas fa-bed"></i> Sleepy
+                  </span>
+                {% else %}
+                  <span class="badge bg-light text-dark me-2">{{ l.emotion|title }}</span>
+                {% endif %}
+                <small class="text-muted">{{ l.confidence|floatformat:2 }}</small>
+              </div>
+              <button class="btn btn-sm btn-outline-danger" 
+                      onclick="deleteLog('{{ l.ownerUid }}', '{{ l.id }}')"
+                      title="Delete Log">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+            <div class="mobile-card-body">
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Log ID</span>
+                <span class="mobile-card-value">{{ l.id|truncatechars:12 }}</span>
+              </div>
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Owner</span>
+                <span class="mobile-card-value">{{ l.ownerUid|truncatechars:12 }}</span>
+              </div>
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Pet ID</span>
+                <span class="mobile-card-value">{{ l.petId|truncatechars:8 }}</span>
+              </div>
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Timestamp</span>
+                <span class="mobile-card-value">{{ l.timestamp|date:"M d, Y H:i"|default:"N/A" }}</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        
+        {% else %}
+        <div class="empty-state">
+          <i class="fas fa-chart-line"></i>
+          <h3>No Logs Found</h3>
+          <p>No emotion detection logs match your current search criteria.</p>
+          <a href="/admin-panel/logs/" class="btn btn-primary">
+            <i class="fas fa-refresh"></i> Reset Filters
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalLabel">
+          <i class="fas fa-exclamation-triangle text-warning"></i>
+          Confirm Delete
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete this emotion log?</p>
+        <p class="text-muted">This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form id="deleteForm" method="post" style="display: inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger">
+            <i class="fas fa-trash"></i> Delete Log
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function deleteLog(ownerUid, logId) {
+  document.getElementById('deleteForm').action = '/admin-panel/logs/' + ownerUid + '/' + logId + '/delete/';
+  
+  const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  deleteModal.show();
+}
+
+// Add some interactive effects
+document.querySelectorAll('.table tbody tr').forEach(row => {
+  row.addEventListener('mouseenter', function() {
+    this.style.backgroundColor = '#f8f9fa';
+  });
+  
+  row.addEventListener('mouseleave', function() {
+    this.style.backgroundColor = '';
+  });
+});
+</script>
 {% endblock %}
 
 
