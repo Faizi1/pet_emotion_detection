@@ -1,53 +1,1241 @@
 {% extends "admin/base.html" %}
+{% load static %}
 
 {% block extrastyle %}{{ block.super }}
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- Bootstrap 5 CSS -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Font Awesome Icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<!-- Custom Admin Panel Styles -->
 <style>
-  body.sidebar-collapsed #nav-sidebar { width: 52px; }
-  body.sidebar-collapsed #nav-sidebar .app-list a { text-indent: -9999px; }
-  body.sidebar-collapsed #nav-sidebar .app-list a::after { content: '\2630'; text-indent: 0; display: block; color: #fff; }
-  #nav-sidebar { width: 260px; transition: width .2s ease; background:#1f2937; padding:12px; border-radius:8px; }
-  #nav-sidebar .app-list { list-style: none; margin: 0; padding: 0; }
-  #nav-sidebar .app-list li { margin: 6px 0; }
-  #nav-sidebar .app-list a {
-    display: block; padding: 10px 12px; border-radius: 6px;
-    background: #0b7285; color: #fff; text-decoration: none; font-weight:600;
+  :root {
+    --primary-color: #2c3e50;
+    --secondary-color: #3498db;
+    --success-color: #27ae60;
+    --warning-color: #f39c12;
+    --danger-color: #e74c3c;
+    --light-color: #ecf0f1;
+    --dark-color: #2c3e50;
+    --sidebar-width: 320px;
+    --header-height: 70px;
   }
-  #nav-sidebar .app-list a:hover { background: #0c8599; }
-  .dashboard .module { box-shadow: 0 1px 3px rgba(0,0,0,.06); background:#fff; }
-  .button { display:inline-block; padding:6px 10px; border-radius:6px; background:#0b7285; color:#fff; text-decoration:none; }
-  .button:hover { background:#0c8599; }
-  .form-row { margin: 8px 0; }
-  .form-row label { display: inline-block; width: 160px; font-weight: 600; }
-  .form-row input { width: 320px; }
-  .listing th, .listing td { padding: 8px; }
-  .submit-row .button, .submit-row .default { margin-right: 8px; }
-  .sidebar-toggle { position: sticky; top: 8px; display:block; margin-bottom:8px; background:#334155; }
-  @media (max-width: 991px) {
-    #nav-sidebar { width: 100%; margin-bottom:12px; }
-    body.sidebar-collapsed #nav-sidebar { width:100%; }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+    color: #333;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Main Layout */
+  .admin-container {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    position: relative;
+    padding-left: var(--sidebar-width);
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: var(--sidebar-width);
+    background: linear-gradient(135deg, var(--primary-color) 0%, #34495e 100%);
+    color: white;
+    position: fixed;
+    height: 100vh;
+    left: 0;
+    top: 0;
+    z-index: 1000;
+    overflow-y: auto;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+    margin: 0;
+    padding: 0;
+  }
+
+  .sidebar.collapsed {
+    width: 70px;
+  }
+
+  .sidebar-header {
+    padding: 20px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .sidebar-header h3 {
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+    transition: all 0.3s ease;
+  }
+
+  .sidebar.collapsed .sidebar-header h3 {
+    display: none;
+  }
+
+  .sidebar-toggle {
+    position: absolute;
+    top: 20px;
+    right: 15px;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar.collapsed .sidebar-toggle {
+    right: 20px;
+  }
+
+  .sidebar-toggle:hover {
+    transform: scale(1.1);
+  }
+
+  /* Navigation Menu */
+  .sidebar-nav {
+    padding: 20px 0;
+  }
+
+  .nav-item {
+    margin-bottom: 5px;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    padding: 15px 25px;
+    color: rgba(255,255,255,0.8);
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border-left: 3px solid transparent;
+  }
+
+  .nav-link:hover {
+    background-color: rgba(255,255,255,0.1);
+    color: white;
+    border-left-color: var(--secondary-color);
+  }
+
+  .nav-link.active {
+    background-color: rgba(255,255,255,0.15);
+    color: white;
+    border-left-color: var(--secondary-color);
+  }
+
+  .nav-link i {
+    width: 20px;
+    margin-right: 15px;
+    text-align: center;
+    font-size: 1.1rem;
+  }
+
+  .sidebar.collapsed .nav-link span {
+    display: none;
+  }
+
+  .sidebar.collapsed .nav-link {
+    justify-content: center;
+    padding: 15px;
+  }
+
+  .sidebar.collapsed .nav-link i {
+    margin-right: 0;
+  }
+
+  /* Main Content */
+  .main-content {
+    flex: 1;
+    min-height: 100vh;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    margin: 0;
+  }
+
+  .sidebar.collapsed ~ .admin-container {
+    padding-left: 70px;
+  }
+
+  /* Header */
+  .admin-header {
+    background: white;
+    padding: 0 30px;
+    height: var(--header-height);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    flex-shrink: 0;
+  }
+
+  .header-left h1 {
+    color: var(--primary-color);
+    font-size: 1.8rem;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--secondary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+  }
+
+  .logout-btn {
+    background: var(--danger-color);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: all 0.3s ease;
+  }
+
+  .logout-btn:hover {
+    background: #c0392b;
+    color: white;
+    text-decoration: none;
+  }
+
+  /* Content Area */
+  .content-area {
+    padding: 20px 30px;
+    min-height: calc(100vh - var(--header-height));
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+    flex: 1;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Ensure full width for all content */
+  .main-content * {
+    max-width: 100%;
+  }
+
+  /* Force full width for content area and its children */
+  .content-area,
+  .content-area .row,
+  .content-area .container,
+  .content-area .container-fluid {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Override Bootstrap container constraints */
+  .main-content .container,
+  .main-content .container-fluid {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .main-content .row {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  /* Ensure no gap between sidebar and main content */
+  .admin-container {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Simple and clean main content positioning */
+  .main-content {
+    flex: 1;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Ensure header takes full width */
+  .admin-header {
+    width: 100%;
+    margin: 0;
+    padding: 0 30px;
+  }
+
+  /* Cards */
+  .card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    background: white;
+    border-bottom: 1px solid #e9ecef;
+    padding: 15px 20px;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--primary-color);
+  }
+
+  .card-body {
+    padding: 20px;
+  }
+
+  /* Tables */
+  .table {
+    margin-bottom: 0;
+  }
+
+  .table thead th {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+    color: var(--primary-color);
+    padding: 15px;
+  }
+
+  .table tbody td {
+    padding: 15px;
+    vertical-align: middle;
+    border-top: 1px solid #dee2e6;
+  }
+
+  .table tbody tr:hover {
+    background-color: #f8f9fa;
+  }
+
+  /* Buttons */
+  .btn {
+    border-radius: 6px;
+    font-weight: 500;
+    padding: 8px 16px;
+    transition: all 0.3s ease;
+  }
+
+  .btn-primary {
+    background: var(--secondary-color);
+    border-color: var(--secondary-color);
+  }
+
+  .btn-primary:hover {
+    background: #2980b9;
+    border-color: #2980b9;
+  }
+
+  .btn-success {
+    background: var(--success-color);
+    border-color: var(--success-color);
+  }
+
+  .btn-warning {
+    background: var(--warning-color);
+    border-color: var(--warning-color);
+  }
+
+  .btn-danger {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+  }
+
+  /* Forms */
+  .form-control {
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    padding: 10px 15px;
+    transition: all 0.3s ease;
+  }
+
+  .form-control:focus {
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+  }
+
+  /* Stats Cards */
+  .stats-card {
+    background: white;
+    border-radius: 12px;
+    padding: 30px 25px;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: transform 0.3s ease;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .stats-card:hover {
+    transform: translateY(-5px);
+  }
+
+  /* Stats Cards Layout */
+  .stats-cards-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+
+  .stats-cards-container .row {
+    justify-content: center;
+  }
+
+  .stats-cards-container .col-xl-3 {
+    flex: 0 0 22%;
+    max-width: 22%;
+  }
+
+  @media (max-width: 1200px) {
+    .stats-cards-container .col-xl-3 {
+      flex: 0 0 30%;
+      max-width: 30%;
+    }
+  }
+
+  @media (max-width: 992px) {
+    .stats-cards-container .col-xl-3 {
+      flex: 0 0 45%;
+      max-width: 45%;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .stats-cards-container .col-xl-3 {
+      flex: 0 0 100%;
+      max-width: 100%;
+    }
+  }
+
+  .stats-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 15px;
+    font-size: 1.5rem;
+    color: white;
+  }
+
+  .stats-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 5px;
+  }
+
+  .stats-label {
+    color: #6c757d;
+    font-size: 1rem;
+    font-weight: 500;
+  }
+
+  /* Mobile Toggle Button */
+  .mobile-toggle {
+    display: none;
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 1001;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  }
+
+  /* Mobile Toggle Button */
+  .mobile-toggle {
+    display: none;
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 1001;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  }
+
+  /* Sidebar overlay for mobile */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 999;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 1200px) {
+    .sidebar {
+      width: 290px;
+    }
+    
+    .admin-container {
+      padding-left: 290px;
+    }
+    
+    .content-area {
+      padding: 18px 25px;
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 992px) {
+    .sidebar {
+      width: 260px;
+    }
+    
+    .admin-container {
+      padding-left: 260px;
+    }
+    
+    .content-area {
+      padding: 16px 20px;
+      width: 100%;
+    }
+    
+    .stats-card {
+      margin-bottom: 20px;
+    }
+    
+    .card-body {
+      padding: 20px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .mobile-toggle {
+      display: block;
+    }
+
+    .admin-container {
+      position: relative;
+    }
+
+    .sidebar {
+      position: fixed;
+      left: -100%;
+      width: 280px;
+      transition: left 0.3s ease;
+      z-index: 1000;
+      top: 0;
+      height: 100vh;
+    }
+
+    .sidebar.show {
+      left: 0;
+    }
+
+    .admin-container {
+      padding-left: 0 !important;
+    }
+
+    .main-content {
+      width: 100% !important;
+      max-width: 100% !important;
+      position: relative;
+      z-index: 1;
+    }
+
+    .sidebar-overlay.show {
+      display: block;
+    }
+
+    .admin-header {
+      padding: 0 20px;
+      height: 60px;
+      position: relative;
+      z-index: 998;
+      width: 100%;
+    }
+
+    .admin-header h1 {
+      font-size: 1.4rem;
+    }
+
+    .content-area {
+      padding: 15px 20px;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+    .sidebar-toggle {
+      display: none;
+    }
+
+    .user-info span {
+      display: none;
+    }
+
+    .stats-card {
+      margin-bottom: 20px;
+      width: 100%;
+    }
+
+    .stats-number {
+      font-size: 2rem;
+    }
+
+    .table-responsive {
+      font-size: 0.9rem;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      overflow-x: auto;
+      width: 100%;
+    }
+
+    .btn-group .btn {
+      padding: 4px 8px;
+      font-size: 0.8rem;
+    }
+    
+    .card {
+      margin-bottom: 20px;
+      width: 100%;
+    }
+    
+    .card-body {
+      padding: 15px;
+    }
+    
+    /* Make tables more mobile-friendly */
+    .table th,
+    .table td {
+      padding: 8px;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+    
+    /* Stack form elements vertically on mobile */
+    .row .col-md-6,
+    .row .col-lg-6,
+    .row .col-xl-6 {
+      margin-bottom: 15px;
+      width: 100%;
+    }
+
+    /* Ensure all Bootstrap columns stack properly */
+    .col-xl-4, .col-lg-6, .col-md-6, .col-sm-6 {
+      width: 100% !important;
+      flex: 0 0 100% !important;
+      max-width: 100% !important;
+    }
+  }
+
+  @media (max-width: 576px) {
+    body {
+      font-size: 14px;
+      overflow-x: hidden;
+    }
+
+    .admin-header {
+      padding: 0 10px;
+      height: 55px;
+    }
+
+    .admin-header h1 {
+      font-size: 1.2rem;
+    }
+
+    .content-area {
+      padding: 10px;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .card-body {
+      padding: 15px;
+    }
+
+    .stats-card {
+      padding: 15px;
+      margin-bottom: 15px;
+      width: 100%;
+    }
+
+    .stats-number {
+      font-size: 1.8rem;
+    }
+
+    .stats-icon {
+      width: 50px;
+      height: 50px;
+      font-size: 1.2rem;
+    }
+
+    .table th,
+    .table td {
+      padding: 6px 4px;
+      font-size: 0.75rem;
+    }
+
+    .btn-sm {
+      padding: 2px 6px;
+      font-size: 0.7rem;
+    }
+
+    .modal-dialog {
+      margin: 10px;
+      max-width: calc(100% - 20px);
+    }
+
+    .form-control,
+    .form-select {
+      font-size: 0.9rem;
+      padding: 8px 12px;
+    }
+    
+    .btn {
+      padding: 8px 12px;
+      font-size: 0.9rem;
+    }
+    
+    /* Make navigation more touch-friendly */
+    .nav-link {
+      padding: 12px 15px;
+      font-size: 0.9rem;
+    }
+    
+    /* Adjust spacing for mobile */
+    .mb-4 {
+      margin-bottom: 1rem !important;
+    }
+    
+    .mb-3 {
+      margin-bottom: 0.75rem !important;
+    }
+
+    /* Ensure all content fits within screen */
+    .row {
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+    }
+
+    .col-12, .col-sm-12, .col-md-12, .col-lg-12, .col-xl-12 {
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .admin-header h1 {
+      font-size: 1rem;
+    }
+    
+    .content-area {
+      padding: 8px;
+    }
+    
+    .card-body {
+      padding: 12px;
+    }
+    
+    .stats-card {
+      padding: 12px;
+    }
+    
+    .stats-number {
+      font-size: 1.5rem;
+    }
+    
+    .table th,
+    .table td {
+      padding: 4px 2px;
+      font-size: 0.7rem;
+    }
+    
+    .btn {
+      padding: 6px 10px;
+      font-size: 0.8rem;
+    }
+
+    .sidebar {
+      width: 100%;
+    }
+  }
+
+  /* Fix for any content going off-screen */
+  .container-fluid,
+  .container {
+    max-width: 100% !important;
+    overflow-x: hidden;
+  }
+
+  /* Ensure all content is within viewport */
+  * {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Fix for Bootstrap grid on small screens */
+  @media (max-width: 768px) {
+    .row {
+      margin-left: 0;
+      margin-right: 0;
+    }
+    
+    [class*="col-"] {
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+  }
+
+  /* Responsive Tables */
+  .table-responsive {
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  }
+
+  /* Mobile Table Styles */
+  @media (max-width: 768px) {
+    .table-responsive {
+      font-size: 0.85rem;
+    }
+    
+    .table th,
+    .table td {
+      padding: 8px 4px;
+      white-space: nowrap;
+      min-width: 100px;
+    }
+    
+    /* Hide less important columns on mobile */
+    .table .mobile-hide {
+      display: none;
+    }
+    
+    /* Make action buttons smaller */
+    .btn-group .btn {
+      padding: 2px 6px;
+      font-size: 0.7rem;
+    }
+    
+    /* Stack user info vertically */
+    .d-flex.align-items-center {
+      flex-direction: column;
+      align-items: flex-start !important;
+    }
+    
+    .d-flex.align-items-center .me-3 {
+      margin-right: 0 !important;
+      margin-bottom: 8px;
+    }
+  }
+
+  @media (max-width: 576px) {
+    .table-responsive {
+      font-size: 0.75rem;
+    }
+    
+    .table th,
+    .table td {
+      padding: 6px 2px;
+      min-width: 80px;
+    }
+    
+    /* Hide more columns on very small screens */
+    .table .mobile-hide-sm {
+      display: none;
+    }
+    
+    /* Make buttons even smaller */
+    .btn {
+      padding: 2px 4px;
+      font-size: 0.65rem;
+    }
+    
+    /* Compact user avatars */
+    .bg-primary.rounded-circle {
+      width: 30px !important;
+      height: 30px !important;
+      font-size: 0.8rem;
+    }
+    
+    /* Truncate long text */
+    .table td {
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .table-responsive {
+      font-size: 0.7rem;
+    }
+    
+    .table th,
+    .table td {
+      padding: 4px 1px;
+      min-width: 60px;
+    }
+    
+    /* Hide most columns on tiny screens */
+    .table .mobile-hide-xs {
+      display: none;
+    }
+    
+    /* Show only essential columns */
+    .table .mobile-show {
+      display: table-cell !important;
+    }
+  }
+
+  /* Card-based mobile layout for very small screens */
+  @media (max-width: 480px) {
+    .table-responsive {
+      display: none;
+    }
+    
+    .mobile-cards {
+      display: block;
+    }
+    
+    .mobile-card {
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .mobile-card-header {
+      display: flex;
+      justify-content: between;
+      align-items: center;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .mobile-card-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    
+    .mobile-card-item {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .mobile-card-label {
+      font-size: 0.7rem;
+      color: #6c757d;
+      margin-bottom: 2px;
+    }
+    
+    .mobile-card-value {
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+  }
+
+  @media (min-width: 481px) {
+    .mobile-cards {
+      display: none;
+    }
+  }
+
+  @media (min-width: 769px) {
+    .sidebar-toggle {
+      display: none;
+    }
+    
+    .mobile-toggle {
+      display: none;
+    }
+  }
+
+  /* Sidebar overlay for mobile */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 999;
+  }
+
+  @media (max-width: 768px) {
+    .sidebar-overlay.show {
+      display: block;
+    }
+  }
+
+  /* Loading States */
+  .loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+  }
+
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid var(--secondary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* Empty States */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #6c757d;
+  }
+
+  .empty-state i {
+    font-size: 4rem;
+    margin-bottom: 20px;
+    color: #dee2e6;
+  }
+
+  .empty-state h3 {
+    margin-bottom: 10px;
+    color: #495057;
+  }
+
+  .empty-state p {
+    margin-bottom: 0;
   }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 {% endblock %}
 
 {% block branding %}
-<div id="site-name"><a href="/admin-panel/dashboard/">Petmood Admin Panel</a></div>
+<div class="sidebar-header">
+  <h3><i class="fas fa-paw"></i> PetMood Admin</h3>
+  <button class="sidebar-toggle" onclick="toggleSidebar()">
+    <i class="fas fa-bars"></i>
+  </button>
+</div>
 {% endblock %}
 
-{% block nav-sidebar %}
-<nav id="nav-sidebar" class="mb-3">
-  <button type="button" class="button sidebar-toggle" onclick="document.body.classList.toggle('sidebar-collapsed')">Toggle</button>
-  <ul class="app-list">
-    <li><a href="/admin-panel/dashboard/">Dashboard</a></li>
-    <li><a href="/admin-panel/users/">Users</a></li>
-    <li><a href="/admin-panel/pets/">Pets</a></li>
-    <li><a href="/admin-panel/logs/">Emotion Logs</a></li>
-    <li><a href="/admin-panel/community/">Community</a></li>
-    <li><a href="/admin-panel/support/">Support</a></li>
+
+{% block content %}
+<!-- Mobile Toggle Button -->
+<button class="mobile-toggle" id="mobileToggle" onclick="toggleMobileSidebar()">
+  <i class="fas fa-bars"></i>
+</button>
+
+<!-- Sidebar Overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
+
+<div class="admin-container">
+  <div class="sidebar"  id="sidebar"> 
+    <div class="sidebar-header">
+      <h3><i class="fas fa-paw"></i> PetMood Admin</h3>
+      <button class="sidebar-toggle" onclick="toggleSidebar()">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+    <nav class="sidebar-nav">
+      <ul class="nav flex-column">
+        <li class="nav-item">
+          <a class="nav-link" href="/admin-panel/dashboard/">
+            <i class="fas fa-tachometer-alt"></i>
+            <span>Dashboard</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/admin-panel/users/">
+            <i class="fas fa-users"></i>
+            <span>Users</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/admin-panel/pets/">
+            <i class="fas fa-paw"></i>
+            <span>Pets</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/admin-panel/logs/">
+            <i class="fas fa-chart-line"></i>
+            <span>Emotion Logs</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/admin-panel/community/">
+            <i class="fas fa-comments"></i>
+            <span>Community</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/admin-panel/support/">
+            <i class="fas fa-headset"></i>
+            <span>Support</span>
+          </a>
+        </li>
   </ul>
 </nav>
+  </div>
+  
+  <div class="main-content">
+    <div class="admin-header">
+      <div class="header-left">
+        <h1>{% block page_title %}Admin Panel{% endblock %}</h1>
+      </div>
+      <!-- <div class="header-right">
+        <div class="user-info">
+          <div class="user-avatar">
+            <i class="fas fa-user"></i>
+          </div>
+          <span>Admin User</span>
+        </div> -->
+        <!-- <a href="/admin/logout/" class="logout-btn">
+          <i class="fas fa-sign-out-alt"></i> Logout
+        </a> -->
+      <!-- </div> -->
+    </div>
+    
+    <div class="content-area">
+      {% block admin_content %}{% endblock %}
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap 5 JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar.classList.toggle('collapsed');
+  
+  // Save preference to localStorage
+  const isCollapsed = sidebar.classList.contains('collapsed');
+  localStorage.setItem('sidebarCollapsed', isCollapsed);
+}
+
+// Load sidebar state on page load
+document.addEventListener('DOMContentLoaded', function() {
+  const sidebar = document.getElementById('sidebar');
+  const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+  
+  if (isCollapsed) {
+    sidebar.classList.add('collapsed');
+  }
+  
+  // Set active nav link based on current page
+  const currentPath = window.location.pathname;
+  const navLinks = document.querySelectorAll('.nav-link');
+  
+  navLinks.forEach(link => {
+    if (link.getAttribute('href') === currentPath) {
+      link.classList.add('active');
+    }
+  });
+});
+
+// Mobile sidebar toggle
+function toggleMobileSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  
+  sidebar.classList.toggle('show');
+  overlay.classList.toggle('show');
+}
+
+// Close mobile sidebar
+function closeMobileSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  
+  sidebar.classList.remove('show');
+  overlay.classList.remove('show');
+}
+
+// Handle window resize
+window.addEventListener('resize', function() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  
+  if (window.innerWidth > 768) {
+    sidebar.classList.remove('show');
+    overlay.classList.remove('show');
+  }
+});
+
+// Close mobile sidebar when clicking outside
+document.addEventListener('click', function(event) {
+  const sidebar = document.getElementById('sidebar');
+  const mobileToggle = document.getElementById('mobileToggle');
+  const overlay = document.getElementById('sidebarOverlay');
+  
+  if (window.innerWidth <= 768 && 
+      !sidebar.contains(event.target) && 
+      !mobileToggle.contains(event.target) &&
+      !overlay.contains(event.target)) {
+    closeMobileSidebar();
+  }
+});
+</script>
 {% endblock %}
-
-

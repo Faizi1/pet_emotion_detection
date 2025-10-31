@@ -1,6 +1,7 @@
 """
-Twilio SMS Service for OTP and notifications
-Handles SMS sending through Twilio API
+SMS Service for OTP and notifications
+Currently using: Vonage (Twilio and Telgorithm are available but commented out)
+Set USE_VONAGE=true in .env to enable Vonage SMS
 """
 
 import os
@@ -291,5 +292,439 @@ class TwilioSMSService:
         }
 
 
-# Global instance
-sms_service = TwilioSMSService()
+# Telgorithm SMS Service Implementation
+class TelgorithmSMSService:
+    """
+    Telgorithm SMS service for sending OTP and notifications
+    Alternative to Twilio with better pricing and global coverage
+    """
+    
+    def __init__(self):
+        from django.conf import settings
+        self.api_key = getattr(settings, 'TELGORITHM_API_KEY', None)
+        self.sender_id = getattr(settings, 'TELGORITHM_SENDER_ID', 'PetMood')
+        self.api_url = getattr(settings, 'TELGORITHM_API_URL', 'https://api.telgorithm.com/v1/sms')
+        self.is_configured = bool(self.api_key)
+        
+        if self.is_configured:
+            logger.info("Telgorithm SMS service initialized successfully")
+        else:
+            logger.warning("Telgorithm not configured. Set TELGORITHM_API_KEY")
+    
+    def format_phone_number(self, phone_number: str) -> str:
+        """Format phone number to E.164 format (same as Twilio)"""
+        # Remove all non-digit characters except +
+        cleaned = ''.join(char for char in phone_number if char.isdigit() or char == '+')
+        
+        # Add + if not present
+        if not cleaned.startswith('+'):
+            if len(cleaned) == 10:
+                cleaned = '+1' + cleaned  # Assume US
+            else:
+                cleaned = '+' + cleaned
+        
+        return cleaned
+    
+    def send_otp(self, phone_number: str, otp_code: str, message_type: str = "registration") -> Dict[str, any]:
+        """Send OTP code via Telgorithm SMS"""
+        if not self.is_configured:
+            return {
+                'success': False,
+                'error': 'Telgorithm not configured',
+                'message': 'SMS service not available'
+            }
+        
+        try:
+            
+            import requests
+            
+            # Format phone number
+            formatted_number = self.format_phone_number(phone_number)
+            
+            # Create message
+            messages = {
+                'registration': f"Your Pet Mood verification code is: {otp_code}. Valid for 10 minutes.",
+                'login': f"Your Pet Mood login code is: {otp_code}. Valid for 10 minutes.",
+                'reset': f"Your Pet Mood password reset code is: {otp_code}. Valid for 10 minutes.",
+                'general': f"Your Pet Mood verification code is: {otp_code}. Valid for 10 minutes."
+            }
+            
+            message_body = messages.get(message_type, messages['general'])
+            
+            # Send SMS via Telgorithm API
+            response = requests.post(
+                f"{self.api_url}/send",
+                headers={
+                    'Authorization': f'Bearer {self.api_key}',
+                    'Content-Type': 'application/json'
+                },
+                json={
+                    'to': formatted_number,
+                    'from': self.sender_id,
+                    'message': message_body
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200 or response.status_code == 201:
+                data = response.json()
+                logger.info(f"Telgorithm SMS sent successfully to: {formatted_number}")
+                
+                return {
+                    'success': True,
+                    'message_id': data.get('message_id', data.get('id', 'unknown')),
+                    'to': formatted_number,
+                    'status': 'sent',
+                    'error': None,
+                    'provider': 'telgorithm'
+                }
+            else:
+                error_msg = f"Telgorithm API error: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'message': 'Failed to send SMS via Telgorithm'
+                }
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Telgorithm SMS sending failed: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg,
+                'message': 'Failed to send SMS via Telgorithm'
+            }
+    
+    def send_notification(self, phone_number: str, message: str) -> Dict[str, any]:
+        """Send custom notification message via Telgorithm"""
+        return self.send_otp(phone_number, message, 'general')
+    
+    def get_service_status(self) -> Dict[str, any]:
+        """Get Telgorithm service configuration status"""
+        return {
+            'configured': self.is_configured,
+            'api_key_set': bool(self.api_key),
+            'sender_id': self.sender_id,
+            'api_url': self.api_url
+        }
+
+
+# Hybrid SMS Service - Uses Telgorithm with Twilio fallback
+class HybridSMSService:
+    """
+    Hybrid SMS service that tries Telgorithm first, falls back to Twilio
+    """
+    
+    def __init__(self):
+        from django.conf import settings
+        self.use_telgorithm = getattr(settings, 'USE_TELGORITHM', False)
+        
+        # Initialize both services
+        self.telgorithm = TelgorithmSMSService()
+        self.twilio = TwilioSMSService()
+        
+        # Determine primary service
+        self.primary_service = self.telgorithm if self.use_telgorithm else self.twilio
+        self.fallback_service = self.twilio if self.use_telgorithm else None
+        
+        logger.info(f"Hybrid SMS service initialized - Primary: {'Telgorithm' if self.use_telgorithm else 'Twilio'}")
+    
+    def send_otp(self, phone_number: str, otp_code: str, message_type: str = "registration") -> Dict[str, any]:
+        """Send OTP via primary service, fallback to secondary if fails"""
+        # Try primary service
+        result = self.primary_service.send_otp(phone_number, otp_code, message_type)
+        
+        # If primary fails and we have fallback, try fallback
+        if not result['success'] and self.fallback_service and self.fallback_service.is_configured:
+            logger.info(f"Primary SMS service failed, trying fallback: {self.fallback_service.__class__.__name__}")
+            fallback_result = self.fallback_service.send_otp(phone_number, otp_code, message_type)
+            fallback_result['fallback_used'] = True
+            fallback_result['primary_failed'] = result.get('error', 'Unknown error')
+            return fallback_result
+        
+        return result
+    
+    def send_notification(self, phone_number: str, message: str) -> Dict[str, any]:
+        """Send notification via primary service, fallback to secondary if fails"""
+        result = self.primary_service.send_notification(phone_number, message)
+        
+        if not result['success'] and self.fallback_service and self.fallback_service.is_configured:
+            logger.info(f"Primary SMS service failed, trying fallback: {self.fallback_service.__class__.__name__}")
+            fallback_result = self.fallback_service.send_notification(phone_number, message)
+            fallback_result['fallback_used'] = True
+            return fallback_result
+        
+        return result
+    
+    def get_service_status(self) -> Dict[str, any]:
+        """Get status of both services"""
+        return {
+            'primary_service': 'Telgorithm' if self.use_telgorithm else 'Twilio',
+            'fallback_service': 'Twilio' if self.use_telgorithm else None,
+            'telgorithm_status': self.telgorithm.get_service_status(),
+            'twilio_status': self.twilio.get_service_status()
+        }
+
+
+# Vonage SMS Service Implementation
+class VonageSMSService:
+    """
+    Vonage (formerly Nexmo) SMS service for sending OTP and notifications
+    Excellent global coverage with better pricing than Twilio
+    """
+    
+    def __init__(self):
+        from django.conf import settings
+        self.api_key = getattr(settings, 'VONAGE_API_KEY', None)
+        self.api_secret = getattr(settings, 'VONAGE_API_SECRET', None)
+        # Default to your Vonage phone number if set, otherwise use custom sender
+        # Try phone number first: +13863783649 (already registered in Vonage)
+        self.sender_id = getattr(settings, 'VONAGE_SENDER_ID', '+13863783649')
+        self.api_url = 'https://rest.nexmo.com/sms/json'
+        self.is_configured = bool(self.api_key and self.api_secret)
+        
+        if self.is_configured:
+            logger.info("Vonage SMS service initialized successfully")
+        else:
+            logger.warning("Vonage not configured. Set VONAGE_API_KEY and VONAGE_API_SECRET")
+    
+    def format_phone_number(self, phone_number: str) -> str:
+        """Format phone number to E.164 format (same as Twilio)"""
+        # Remove all non-digit characters except +
+        cleaned = ''.join(char for char in phone_number if char.isdigit() or char == '+')
+        
+        # Add + if not present
+        if not cleaned.startswith('+'):
+            if len(cleaned) == 10:
+                cleaned = '+1' + cleaned  # Assume US
+            else:
+                cleaned = '+' + cleaned
+        
+        return cleaned
+    
+    def send_otp(self, phone_number: str, otp_code: str, message_type: str = "registration") -> Dict[str, any]:
+        """Send OTP code via Vonage SMS"""
+        if not self.is_configured:
+            return {
+                'success': False,
+                'error': 'Vonage not configured',
+                'message': 'SMS service not available'
+            }
+        
+        try:
+            import requests
+            
+            # Format phone number
+            formatted_number = self.format_phone_number(phone_number)
+            
+            # Create message
+            messages = {
+                'registration': f"Your Pet Mood verification code is: {otp_code}. Valid for 10 minutes.",
+                'login': f"Your Pet Mood login code is: {otp_code}. Valid for 10 minutes.",
+                'reset': f"Your Pet Mood password reset code is: {otp_code}. Valid for 10 minutes.",
+                'general': f"Your Pet Mood verification code is: {otp_code}. Valid for 10 minutes."
+            }
+            
+            message_body = messages.get(message_type, messages['general'])
+            
+            # Send SMS via Vonage API
+            payload = {
+                'api_key': self.api_key,
+                'api_secret': self.api_secret,
+                'to': formatted_number,
+                'from': self.sender_id,
+                'text': message_body,
+                'type': 'text'
+            }
+            
+            response = requests.post(
+                self.api_url,
+                data=payload,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Check if message was sent successfully
+                if data.get('messages') and len(data['messages']) > 0:
+                    message_info = data['messages'][0]
+                    status = message_info.get('status', 'unknown')
+                    
+                    if status == '0':  # Success
+                        logger.info(f"Vonage SMS sent successfully to: {formatted_number}")
+                        return {
+                            'success': True,
+                            'message_id': message_info.get('message-id', 'unknown'),
+                            'to': formatted_number,
+                            'status': 'sent',
+                            'error': None,
+                            'provider': 'vonage'
+                        }
+                    else:
+                        error_msg = f"Vonage API error: {message_info.get('error-text', 'Unknown error')}"
+                        logger.error(error_msg)
+                        return {
+                            'success': False,
+                            'error': error_msg,
+                            'message': 'Failed to send SMS via Vonage'
+                        }
+                else:
+                    error_msg = f"Vonage API error: {data.get('error-text', 'Unknown error')}"
+                    logger.error(error_msg)
+                    return {
+                        'success': False,
+                        'error': error_msg,
+                        'message': 'Failed to send SMS via Vonage'
+                    }
+            else:
+                error_msg = f"Vonage API error: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'message': 'Failed to send SMS via Vonage'
+                }
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Vonage SMS sending failed: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg,
+                'message': 'Failed to send SMS via Vonage'
+            }
+    
+    def send_notification(self, phone_number: str, message: str) -> Dict[str, any]:
+        """Send custom notification message via Vonage"""
+        return self.send_otp(phone_number, message, 'general')
+    
+    def get_service_status(self) -> Dict[str, any]:
+        """Get Vonage service configuration status"""
+        return {
+            'configured': self.is_configured,
+            'api_key_set': bool(self.api_key),
+            'api_secret_set': bool(self.api_secret),
+            'sender_id': self.sender_id
+        }
+
+
+# Enhanced Hybrid SMS Service - Now supports Vonage, Telgorithm, and Twilio
+class EnhancedHybridSMSService:
+    """
+    Enhanced hybrid SMS service that supports Vonage, Telgorithm, and Twilio
+    Tries services in priority order with automatic fallback
+    """
+    
+    def __init__(self):
+        from django.conf import settings
+        self.use_vonage = getattr(settings, 'USE_VONAGE', False)
+        self.use_telgorithm = getattr(settings, 'USE_TELGORITHM', False)
+        
+        # Initialize all services
+        self.vonage = VonageSMSService()
+        self.telgorithm = TelgorithmSMSService()
+        self.twilio = TwilioSMSService()
+        
+        # Determine priority order
+        if self.use_vonage and self.vonage.is_configured:
+            self.primary_service = self.vonage
+            self.fallback_services = [self.telgorithm, self.twilio]
+            logger.info("Enhanced Hybrid SMS service - Primary: Vonage")
+        elif self.use_telgorithm and self.telgorithm.is_configured:
+            self.primary_service = self.telgorithm
+            self.fallback_services = [self.vonage, self.twilio]
+            logger.info("Enhanced Hybrid SMS service - Primary: Telgorithm")
+        elif self.twilio.is_configured:
+            self.primary_service = self.twilio
+            self.fallback_services = [self.vonage, self.telgorithm]
+            logger.info("Enhanced Hybrid SMS service - Primary: Twilio")
+        else:
+            # No service configured
+            self.primary_service = None
+            self.fallback_services = []
+            logger.warning("No SMS service configured!")
+    
+    def send_otp(self, phone_number: str, otp_code: str, message_type: str = "registration") -> Dict[str, any]:
+        """Send OTP via primary service, try fallbacks if fails"""
+        if not self.primary_service:
+            return {
+                'success': False,
+                'error': 'No SMS service configured',
+                'message': 'Please configure VONAGE, TELGORITHM, or TWILIO credentials'
+            }
+        
+        # Try primary service
+        result = self.primary_service.send_otp(phone_number, otp_code, message_type)
+        
+        # If primary succeeds, return result
+        if result['success']:
+            return result
+        
+        # Try fallback services
+        if self.fallback_services:
+            for fallback in self.fallback_services:
+                if fallback and fallback.is_configured:
+                    logger.info(f"Primary SMS failed, trying fallback: {fallback.__class__.__name__}")
+                    fallback_result = fallback.send_otp(phone_number, otp_code, message_type)
+                    
+                    if fallback_result['success']:
+                        fallback_result['fallback_used'] = True
+                        fallback_result['primary_failed'] = result.get('error', 'Unknown error')
+                        return fallback_result
+        
+        # All services failed
+        return result
+    
+    def send_notification(self, phone_number: str, message: str) -> Dict[str, any]:
+        """Send notification via primary service, try fallbacks if fails"""
+        if not self.primary_service:
+            return {
+                'success': False,
+                'error': 'No SMS service configured'
+            }
+        
+        result = self.primary_service.send_notification(phone_number, message)
+        
+        if result['success']:
+            return result
+        
+        # Try fallback services
+        if self.fallback_services:
+            for fallback in self.fallback_services:
+                if fallback and fallback.is_configured:
+                    fallback_result = fallback.send_notification(phone_number, message)
+                    if fallback_result['success']:
+                        fallback_result['fallback_used'] = True
+                        return fallback_result
+        
+        return result
+    
+    def get_service_status(self) -> Dict[str, any]:
+        """Get status of all services"""
+        return {
+            'primary_service': self.primary_service.__class__.__name__ if self.primary_service else 'None',
+            'fallback_services': [svc.__class__.__name__ for svc in self.fallback_services if svc and svc.is_configured],
+            'vonage_status': self.vonage.get_service_status(),
+            'telgorithm_status': self.telgorithm.get_service_status(),
+            'twilio_status': self.twilio.get_service_status()
+        }
+
+
+# Global instance - Vonage Only (Telgorithm and Twilio commented out)
+# Set USE_VONAGE=true to use Vonage as primary
+
+# Option 1: Use Vonage only (uncomment to use)
+from django.conf import settings
+USE_VONAGE = getattr(settings, 'USE_VONAGE', False)
+
+if USE_VONAGE:
+    sms_service = VonageSMSService()
+else:
+    # Fallback to Twilio if Vonage not configured
+    # sms_service = TwilioSMSService()  # Commented out
+    # sms_service = TelgorithmSMSService()  # Commented out
+    # sms_service = VonageSMSService()  # Commented out
+    # Use simple Vonage-only service
+    sms_service = VonageSMSService()

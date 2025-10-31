@@ -1,58 +1,324 @@
 {% extends "admin/base_site.html" %}
-{% block content %}
-<div class="container-fluid py-2">
-  <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-    <h1 class="h4 mb-0">Users</h1>
-    <form method="get" class="d-flex gap-2 flex-wrap">
-      <input class="form-control" style="max-width:180px" type="text" name="name" placeholder="Name" value="{{ request.GET.name }}">
-      <input class="form-control" style="max-width:220px" type="text" name="email" placeholder="Email" value="{{ request.GET.email }}">
-      <input class="form-control" style="max-width:160px" type="text" name="number" placeholder="Number" value="{{ request.GET.number }}">
-      <select class="form-select" style="max-width:180px" name="phoneVerified">
-        <option value="">Phone Verified</option>
-        <option value="yes" {% if request.GET.phoneVerified == 'yes' %}selected{% endif %}>Yes</option>
-        <option value="no" {% if request.GET.phoneVerified == 'no' %}selected{% endif %}>No</option>
-      </select>
-      <button class="btn btn-primary" type="submit">Filter</button>
-      <a class="btn btn-outline-secondary" href="/admin-panel/users/">Reset</a>
-    </form>
-  </div>
 
-  <div class="table-responsive border rounded">
-    <table class="table table-sm table-striped align-middle mb-0">
-      <thead class="table-light">
-        <tr>
-          <th>UID</th>
-          <th>Name</th>
-          <th>Email</th>
-          <th>Number</th>
-          <th>Phone Verified</th>
-          <th>Created</th>
-          <th style="width:160px;">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for u in users %}
-        <tr>
-          <td><code>{{ u.uid }}</code></td>
-          <td>{{ u.name }}</td>
-          <td>{{ u.email }}</td>
-          <td>{{ u.number }}</td>
-          <td>{{ u.phoneVerified|yesno:"Yes,No" }}</td>
-          <td>{{ u.createdAt }}</td>
-          <td>
-            <a class="btn btn-sm btn-primary" href="/admin-panel/users/{{ u.uid }}/edit/">Edit</a>
-            <form method="post" action="/admin-panel/users/{{ u.uid }}/delete/" class="d-inline">{% csrf_token %}
-              <button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete user and related data?')">Delete</button>
-            </form>
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="7">No users.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+{% block page_title %}Users Management{% endblock %}
+
+{% block admin_content %}
+<!-- Header Section -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h2 class="card-title mb-2">
+              <i class="fas fa-users text-primary"></i>
+              Users Management
+            </h2>
+            <p class="text-muted mb-0">Manage user accounts and permissions</p>
+          </div>
+          <div class="text-end">
+            <span class="badge bg-primary fs-6">{{ users|length }} Total Users</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
+
+<!-- Search and Filter Section -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-search text-info"></i>
+          Search & Filter
+        </h5>
+      </div>
+      <div class="card-body">
+        <form method="get" class="row g-3">
+          <div class="col-md-3">
+            <label for="name" class="form-label">Name</label>
+            <input type="text" 
+                   class="form-control" 
+                   id="name" 
+                   name="name" 
+                   placeholder="Search by name" 
+                   value="{{ request.GET.name }}">
+          </div>
+          <div class="col-md-3">
+            <label for="email" class="form-label">Email</label>
+            <input type="email" 
+                   class="form-control" 
+                   id="email" 
+                   name="email" 
+                   placeholder="Search by email" 
+                   value="{{ request.GET.email }}">
+          </div>
+          <div class="col-md-2">
+            <label for="number" class="form-label">Phone Number</label>
+            <input type="text" 
+                   class="form-control" 
+                   id="number" 
+                   name="number" 
+                   placeholder="Phone number" 
+                   value="{{ request.GET.number }}">
+          </div>
+          <div class="col-md-2">
+            <label for="phoneVerified" class="form-label">Phone Status</label>
+            <select class="form-select" id="phoneVerified" name="phoneVerified">
+              <option value="">All Status</option>
+              <option value="yes" {% if request.GET.phoneVerified == 'yes' %}selected{% endif %}>Verified</option>
+              <option value="no" {% if request.GET.phoneVerified == 'no' %}selected{% endif %}>Not Verified</option>
+            </select>
+          </div>
+          <div class="col-md-2 d-flex align-items-end">
+            <button class="btn btn-primary me-2" type="submit">
+              <i class="fas fa-search"></i> Search
+            </button>
+            <a class="btn btn-outline-secondary" href="/admin-panel/users/">
+              <i class="fas fa-refresh"></i> Reset
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Users Table -->
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-table text-success"></i>
+          Users List
+        </h5>
+      </div>
+      <div class="card-body p-0">
+        {% if users %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="border-0 mobile-show">
+                  <i class="fas fa-user text-muted"></i>
+                  Name
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-id-card text-muted"></i>
+                  UID
+                </th>
+                <th class="border-0 mobile-hide">
+                  <i class="fas fa-envelope text-muted"></i>
+                  Email
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-phone text-muted"></i>
+                  Phone
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-sm">
+                  <i class="fas fa-check-circle text-muted"></i>
+                  Status
+                </th>
+                <th class="border-0 mobile-hide mobile-hide-xs">
+                  <i class="fas fa-calendar text-muted"></i>
+                  Created
+                </th>
+                <th class="border-0 text-center mobile-show">
+                  <i class="fas fa-cogs text-muted"></i>
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td class="mobile-show">
+                  <div class="d-flex align-items-center">
+                    <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center me-3" 
+                         style="width: 40px; height: 40px;">
+                      <i class="fas fa-user text-white"></i>
+                    </div>
+                    <div>
+                      <h6 class="mb-0">{{ u.name|default:"N/A" }}</h6>
+                      <small class="text-muted">{{ u.email|default:"N/A" }}</small>
+                    </div>
+                  </div>
+                </td>
+                <td class="mobile-hide mobile-hide-sm">
+                  <code class="bg-light px-2 py-1 rounded">{{ u.uid|truncatechars:12 }}</code>
+                </td>
+                <td class="mobile-hide">
+                  <a href="mailto:{{ u.email }}" class="text-decoration-none">
+                    {{ u.email|default:"N/A" }}
+                  </a>
+                </td>
+                <td class="mobile-hide mobile-hide-sm">
+                  {% if u.number %}
+                    <a href="tel:{{ u.number }}" class="text-decoration-none">
+                      {{ u.number }}
+                    </a>
+                  {% else %}
+                    <span class="text-muted">N/A</span>
+                  {% endif %}
+                </td>
+                <td class="mobile-hide mobile-hide-sm">
+                  {% if u.phoneVerified %}
+                    <span class="badge bg-success">
+                      <i class="fas fa-check"></i> Verified
+                    </span>
+                  {% else %}
+                    <span class="badge bg-warning">
+                      <i class="fas fa-clock"></i> Pending
+                    </span>
+                  {% endif %}
+                </td>
+                <td class="mobile-hide mobile-hide-xs">
+                  <small class="text-muted">
+                    {{ u.createdAt|date:"M d, Y"|default:"N/A" }}
+                  </small>
+                </td>
+                <td class="text-center mobile-show">
+                  <div class="btn-group" role="group">
+                    <a class="btn btn-sm btn-outline-primary" 
+                       href="/admin-panel/users/{{ u.uid }}/edit/"
+                       title="Edit User">
+                      <i class="fas fa-edit"></i>
+                    </a>
+                    <button class="btn btn-sm btn-outline-danger" 
+                            onclick="deleteUser('{{ u.uid }}', '{% if u.name %}{{ u.name }}{% else %}this user{% endif %}')"
+                            title="Delete User">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- Mobile Card Layout for Small Screens -->
+        <div class="mobile-cards">
+          {% for u in users %}
+          <div class="mobile-card">
+            <div class="mobile-card-header">
+              <div class="d-flex align-items-center">
+                <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center me-3" 
+                     style="width: 40px; height: 40px;">
+                  <i class="fas fa-user text-white"></i>
+                </div>
+                <div>
+                  <h6 class="mb-0">{{ u.name|default:"N/A" }}</h6>
+                  <small class="text-muted">{{ u.email|default:"N/A" }}</small>
+                </div>
+              </div>
+              <div class="btn-group" role="group">
+                <a class="btn btn-sm btn-outline-primary" 
+                   href="/admin-panel/users/{{ u.uid }}/edit/"
+                   title="Edit User">
+                  <i class="fas fa-edit"></i>
+                </a>
+                <button class="btn btn-sm btn-outline-danger" 
+                        onclick="deleteUser('{{ u.uid }}', '{% if u.name %}{{ u.name }}{% else %}this user{% endif %}')"
+                        title="Delete User">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+            <div class="mobile-card-body">
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">UID</span>
+                <span class="mobile-card-value">{{ u.uid|truncatechars:12 }}</span>
+              </div>
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Phone</span>
+                <span class="mobile-card-value">{{ u.number|default:"N/A" }}</span>
+              </div>
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Status</span>
+                <span class="mobile-card-value">
+                  {% if u.phoneVerified %}
+                    <span class="badge bg-success">Verified</span>
+                  {% else %}
+                    <span class="badge bg-warning">Pending</span>
+                  {% endif %}
+                </span>
+              </div>
+              <div class="mobile-card-item">
+                <span class="mobile-card-label">Created</span>
+                <span class="mobile-card-value">{{ u.createdAt|date:"M d, Y"|default:"N/A" }}</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        
+        {% else %}
+        <div class="empty-state">
+          <i class="fas fa-users"></i>
+          <h3>No Users Found</h3>
+          <p>No users match your current search criteria.</p>
+          <a href="/admin-panel/users/" class="btn btn-primary">
+            <i class="fas fa-refresh"></i> Reset Filters
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalLabel">
+          <i class="fas fa-exclamation-triangle text-warning"></i>
+          Confirm Delete
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete <strong id="userName"></strong>?</p>
+        <p class="text-muted">This action cannot be undone and will also delete all related data (pets, logs, etc.).</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form id="deleteForm" method="post" style="display: inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger">
+            <i class="fas fa-trash"></i> Delete User
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function deleteUser(uid, name) {
+  document.getElementById('userName').textContent = name;
+  document.getElementById('deleteForm').action = '/admin-panel/users/' + uid + '/delete/';
+  
+  const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  deleteModal.show();
+}
+
+// Add some interactive effects
+document.querySelectorAll('.table tbody tr').forEach(row => {
+  row.addEventListener('mouseenter', function() {
+    this.style.backgroundColor = '#f8f9fa';
+  });
+  
+  row.addEventListener('mouseleave', function() {
+    this.style.backgroundColor = '';
+  });
+});
+</script>
 {% endblock %}
 
 

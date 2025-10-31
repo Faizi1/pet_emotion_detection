@@ -162,6 +162,18 @@ TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID', '')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', '')
 TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER', '')
 
+# Telgorithm SMS Settings (Alternative to Twilio)
+TELGORITHM_API_KEY = os.getenv('TELGORITHM_API_KEY', '')
+TELGORITHM_SENDER_ID = os.getenv('TELGORITHM_SENDER_ID', 'PetMood')
+TELGORITHM_API_URL = os.getenv('TELGORITHM_API_URL', 'https://api.telgorithm.com/v1/sms')
+USE_TELGORITHM = os.getenv('USE_TELGORITHM', 'false').lower() == 'true'
+
+# Vonage SMS Settings (Alternative to Twilio - Recommended)
+VONAGE_API_KEY = os.getenv('VONAGE_API_KEY', '')
+VONAGE_API_SECRET = os.getenv('VONAGE_API_SECRET', '')
+VONAGE_SENDER_ID = os.getenv('VONAGE_SENDER_ID', 'PetMood')
+USE_VONAGE = os.getenv('USE_VONAGE', 'false').lower() == 'true'
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
