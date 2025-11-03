@@ -11,6 +11,7 @@ from django.views.decorators.http import require_http_methods
 
 class FirestoreDashboardAdmin(AdminSite):
     site_header = 'Petmood Admin'
+    site_url = None  # Hide "VIEW SITE" link
 
     @method_decorator(staff_member_required)
     def firestore_dashboard_view(self, request):
