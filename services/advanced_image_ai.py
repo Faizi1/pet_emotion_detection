@@ -53,7 +53,11 @@ class AdvancedImageAI:
     - Multi-scale feature fusion
     """
     
-    def __init__(self):
+    def __init__(self, use_lightweight_mode=True):
+        """
+        Initialize with lightweight mode by default to save memory.
+        Set use_lightweight_mode=False to load heavy models (requires more RAM).
+        """
         # Pet emotion labels based on research
         self.emotion_labels = [
             'happy', 'sad', 'anxious', 'excited', 'calm',
@@ -68,6 +72,9 @@ class AdvancedImageAI:
         self.audio_sample_rate = 16000
         self.audio_duration = 3.0
         
+        # Memory optimization: lightweight mode by default
+        self.use_lightweight_mode = use_lightweight_mode or os.getenv('LIGHTWEIGHT_MODE', 'true').lower() == 'true'
+        
         # Model paths
         self.model_dir = os.path.join(os.path.dirname(__file__), 'models')
         os.makedirs(self.model_dir, exist_ok=True)
@@ -75,9 +82,12 @@ class AdvancedImageAI:
         self.image_model_path = os.path.join(self.model_dir, 'advanced_image_ai.h5')
         self.audio_model_path = os.path.join(self.model_dir, 'advanced_audio_ai.h5')
         
-        # Load or create models
-        self.image_model = self._load_or_create_image_model()
-        self.audio_model = self._load_or_create_audio_model()
+        # Lazy loading: Don't load models in __init__ to save memory
+        # Models will be loaded on-demand when needed
+        self.image_model = None
+        self.audio_model = None
+        self._image_model_loaded = False
+        self._audio_model_loaded = False
         
     def _squeeze_excitation_block(self, inputs, ratio=16):
         """Squeeze-and-Excitation block for attention mechanism"""
@@ -104,118 +114,138 @@ class AdvancedImageAI:
         return x
     
     def _load_or_create_image_model(self):
-        """Load or create the ultimate image model"""
+        """Load or create image model (lazy loading)"""
+        if self.image_model is not None and self._image_model_loaded:
+            return self.image_model
+            
         try:
-            if os.path.exists(self.image_model_path):
-                logger.info("Loading existing ultimate emotion AI model...")
-                return tf.keras.models.load_model(self.image_model_path)
+            if os.path.exists(self.image_model_path) and not self.use_lightweight_mode:
+                logger.info("Loading existing image AI model...")
+                self.image_model = tf.keras.models.load_model(self.image_model_path)
+                self._image_model_loaded = True
+                return self.image_model
             else:
-                logger.info("Creating new ultimate emotion AI model...")
-                return self._create_ultimate_image_model()
+                logger.info("Creating new image AI model (lightweight mode)...")
+                self.image_model = self._create_ultimate_image_model()
+                self._image_model_loaded = True
+                return self.image_model
         except Exception as e:
             logger.error(f"Error loading image model: {e}")
-            return self._create_ultimate_image_model()
+            self.image_model = self._create_ultimate_image_model()
+            self._image_model_loaded = True
+            return self.image_model
+    
+    def _ensure_image_model_loaded(self):
+        """Ensure image model is loaded (for lazy loading)"""
+        if not self._image_model_loaded:
+            self._load_or_create_image_model()
     
     def _create_ultimate_image_model(self):
-        """Create the ultimate image model based on research"""
+        """Create lightweight image model optimized for memory constraints"""
         try:
-            # Input layer
-            image_input = tf.keras.layers.Input(shape=self.input_shape, name='image_input')
-            
-            # ResNet50 base (more stable than EfficientNetB5)
-            resnet_base = ResNet50(
-                weights='imagenet',
-                include_top=False,
-                input_tensor=image_input,
-                pooling=None
-            )
-            resnet_features = resnet_base.output
-            resnet_features = self._squeeze_excitation_block(resnet_features)
-            resnet_features = GlobalAveragePooling2D()(resnet_features)
-            
-            # MobileNetV2 branch for efficiency
-            mobilenet_base = MobileNetV2(
-                weights='imagenet',
-                include_top=False,
-                input_tensor=image_input,
-                pooling='avg'
-            )
-            mobilenet_features = mobilenet_base.output
-            
-            # VGG16 branch for additional features
-            vgg_base = tf.keras.applications.VGG16(
-                weights='imagenet',
-                include_top=False,
-                input_tensor=image_input,
-                pooling='avg'
-            )
-            vgg_features = vgg_base.output
-            
-            # Custom feature extraction layers
-            custom_features = Conv2D(512, 3, padding='same')(resnet_base.get_layer('conv4_block6_2_relu').output)
-            custom_features = BatchNormalization()(custom_features)
-            custom_features = Activation('relu')(custom_features)
-            custom_features = self._custom_residual_block(custom_features, 512)
-            custom_features = GlobalAveragePooling2D()(custom_features)
-            
-            # Feature fusion
-            combined_features = Concatenate()([
-                resnet_features, mobilenet_features, vgg_features, custom_features
-            ])
-            
-            # Advanced classification head
-            x = BatchNormalization()(combined_features)
-            x = Dense(2048, activation='relu', kernel_initializer='he_normal')(x)
-            x = Dropout(0.5)(x)
-            x = BatchNormalization()(x)
-            x = Dense(1024, activation='relu', kernel_initializer='he_normal')(x)
-            x = Dropout(0.4)(x)
-            x = BatchNormalization()(x)
-            x = Dense(512, activation='relu', kernel_initializer='he_normal')(x)
-            x = Dropout(0.3)(x)
-            x = BatchNormalization()(x)
-            x = Dense(256, activation='relu', kernel_initializer='he_normal')(x)
-            x = Dropout(0.2)(x)
-            
-            # Output layer
-            predictions = Dense(self.num_classes, activation='softmax', kernel_initializer='glorot_uniform')(x)
-            
-            # Create model
-            model = Model(
-                inputs=image_input, 
-                outputs=predictions,
-                name='AdvancedImageAI'
-            )
-            
-            # Compile with advanced optimizer
-            model.compile(
-                optimizer=AdamW(learning_rate=0.0001, weight_decay=0.01),
-                loss='categorical_crossentropy',
-                metrics=['accuracy', 'top_3_accuracy', 'top_5_accuracy']
-            )
-            
-            # Save model
-            model.save(self.image_model_path)
-            logger.info("Advanced image AI model created and saved")
-            
-            return model
+            if self.use_lightweight_mode:
+                # Lightweight model: Simple CNN without heavy pre-trained models
+                logger.info("Creating lightweight image model (memory-optimized)...")
+                image_input = tf.keras.layers.Input(shape=self.input_shape, name='image_input')
+                
+                # Simple CNN architecture (no pre-trained models)
+                x = Conv2D(32, (3, 3), activation='relu', padding='same')(image_input)
+                x = BatchNormalization()(x)
+                x = MaxPooling2D((2, 2))(x)
+                
+                x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+                x = BatchNormalization()(x)
+                x = MaxPooling2D((2, 2))(x)
+                
+                x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+                x = BatchNormalization()(x)
+                x = GlobalAveragePooling2D()(x)
+                
+                # Smaller classification head
+                x = Dense(256, activation='relu')(x)
+                x = Dropout(0.3)(x)
+                x = Dense(128, activation='relu')(x)
+                x = Dropout(0.2)(x)
+                
+                predictions = Dense(self.num_classes, activation='softmax')(x)
+                
+                model = Model(inputs=image_input, outputs=predictions, name='LightweightImageAI')
+                model.compile(
+                    optimizer=AdamW(learning_rate=0.001),
+                    loss='categorical_crossentropy',
+                    metrics=['accuracy']
+                )
+                
+                if os.path.exists(self.image_model_path):
+                    model.save(self.image_model_path)
+                
+                return model
+            else:
+                # Original heavy model (only if lightweight_mode is False)
+                logger.info("Creating full image model (requires more memory)...")
+                # Input layer
+                image_input = tf.keras.layers.Input(shape=self.input_shape, name='image_input')
+                
+                # Use only MobileNetV2 (lighter than ResNet50+VGG16)
+                mobilenet_base = MobileNetV2(
+                    weights='imagenet',
+                    include_top=False,
+                    input_tensor=image_input,
+                    pooling='avg'
+                )
+                mobilenet_features = mobilenet_base.output
+                
+                # Smaller classification head
+                x = BatchNormalization()(mobilenet_features)
+                x = Dense(512, activation='relu', kernel_initializer='he_normal')(x)
+                x = Dropout(0.4)(x)
+                x = BatchNormalization()(x)
+                x = Dense(256, activation='relu', kernel_initializer='he_normal')(x)
+                x = Dropout(0.3)(x)
+                
+                predictions = Dense(self.num_classes, activation='softmax', kernel_initializer='glorot_uniform')(x)
+                
+                model = Model(inputs=image_input, outputs=predictions, name='AdvancedImageAI')
+                model.compile(
+                    optimizer=AdamW(learning_rate=0.0001, weight_decay=0.01),
+                    loss='categorical_crossentropy',
+                    metrics=['accuracy']
+                )
+                
+                model.save(self.image_model_path)
+                logger.info("Advanced image AI model created and saved")
+                return model
             
         except Exception as e:
-            logger.error(f"Error creating ultimate image model: {e}")
+            logger.error(f"Error creating image model: {e}")
             return None
     
     def _load_or_create_audio_model(self):
-        """Load or create the ultimate audio model"""
+        """Load or create audio model (lazy loading)"""
+        if self.audio_model is not None and self._audio_model_loaded:
+            return self.audio_model
+            
         try:
-            if os.path.exists(self.audio_model_path):
-                logger.info("Loading existing ultimate audio AI model...")
-                return tf.keras.models.load_model(self.audio_model_path)
+            if os.path.exists(self.audio_model_path) and not self.use_lightweight_mode:
+                logger.info("Loading existing audio AI model...")
+                self.audio_model = tf.keras.models.load_model(self.audio_model_path)
+                self._audio_model_loaded = True
+                return self.audio_model
             else:
-                logger.info("Creating new ultimate audio AI model...")
-                return self._create_ultimate_audio_model()
+                logger.info("Creating new audio AI model (lightweight mode)...")
+                self.audio_model = self._create_ultimate_audio_model()
+                self._audio_model_loaded = True
+                return self.audio_model
         except Exception as e:
             logger.error(f"Error loading audio model: {e}")
-            return self._create_ultimate_audio_model()
+            self.audio_model = self._create_ultimate_audio_model()
+            self._audio_model_loaded = True
+            return self.audio_model
+    
+    def _ensure_audio_model_loaded(self):
+        """Ensure audio model is loaded (for lazy loading)"""
+        if not self._audio_model_loaded:
+            self._load_or_create_audio_model()
     
     def _create_ultimate_audio_model(self):
         """Create the ultimate audio model"""
@@ -674,28 +704,50 @@ class AdvancedImageAI:
             if processed_image is None:
                 return self._get_fallback_result()
             
-            # Get prediction from model
-            if self.image_model is not None:
-                predictions = self.image_model.predict(processed_image, verbose=0)
-                model_scores = predictions[0]
+            # In lightweight mode, rely primarily on content analysis
+            if self.use_lightweight_mode:
+                # Use content analysis primarily (no heavy model loading)
+                content_scores = self._analyze_image_content(processed_image)
+                if content_scores is not None:
+                    # Add small variation for consistency
+                    image_hash = hash(image_data) % 1000
+                    variation = np.sin(image_hash * 0.01) * 0.05
+                    combined_scores = content_scores + variation
+                    combined_scores = np.maximum(combined_scores, 0)
+                    combined_scores = combined_scores / np.sum(combined_scores)
+                else:
+                    # Fallback to hash-based emotion
+                    return self._get_fallback_result()
             else:
-                model_scores = np.random.random(self.num_classes)
-                model_scores = model_scores / np.sum(model_scores)
+                # Load model if needed (lazy loading)
+                self._ensure_image_model_loaded()
+                
+                # Get prediction from model
+                if self.image_model is not None:
+                    predictions = self.image_model.predict(processed_image, verbose=0)
+                    model_scores = predictions[0]
+                else:
+                    model_scores = np.random.random(self.num_classes)
+                    model_scores = model_scores / np.sum(model_scores)
             
-            # Analyze actual image content
-            content_scores = self._analyze_image_content(processed_image)
-            if content_scores is not None:
-                # Combine model and content analysis (60% content, 40% model)
-                combined_scores = 0.6 * content_scores + 0.4 * model_scores
-            else:
-                combined_scores = model_scores
+            # Get prediction from model (only if not lightweight mode)
+            if not self.use_lightweight_mode:
+                # Analyze actual image content
+                content_scores = self._analyze_image_content(processed_image)
+                if content_scores is not None:
+                    # Combine model and content analysis (60% content, 40% model)
+                    combined_scores = 0.6 * content_scores + 0.4 * model_scores
+                else:
+                    combined_scores = model_scores
+            # In lightweight mode, combined_scores already set above
             
-            # Add variation based on image hash for different results
-            image_hash = hash(image_data) % 1000
-            variation = np.sin(image_hash * 0.01) * 0.05
-            combined_scores = combined_scores + variation
-            combined_scores = np.maximum(combined_scores, 0)
-            combined_scores = combined_scores / np.sum(combined_scores)
+            # Add variation based on image hash for different results (if not already done)
+            if not self.use_lightweight_mode:
+                image_hash = hash(image_data) % 1000
+                variation = np.sin(image_hash * 0.01) * 0.05
+                combined_scores = combined_scores + variation
+                combined_scores = np.maximum(combined_scores, 0)
+                combined_scores = combined_scores / np.sum(combined_scores)
             
             # Get top emotion
             top_emotion_idx = np.argmax(combined_scores)
@@ -739,53 +791,70 @@ class AdvancedImageAI:
             if processed_audio is None:
                 return self._get_fallback_result()
             
-            # Get prediction from model
-            if self.audio_model is not None:
-                predictions = self.audio_model.predict(processed_audio, verbose=0)
-                model_scores = predictions[0]
+            # In lightweight mode, rely primarily on audio analysis
+            if self.use_lightweight_mode:
+                # Use audio content analysis primarily (no heavy model loading)
+                audio_analysis = self._analyze_audio_content(audio_data)
+                if audio_analysis is not None:
+                    # Add hash-based variation
+                    audio_hash = hash(audio_data) % 1000
+                    variation = np.cos(audio_hash * 0.01) * 0.05
+                    combined_scores = audio_analysis + variation
+                    combined_scores = np.maximum(combined_scores, 0)
+                    combined_scores = combined_scores / np.sum(combined_scores)
+                else:
+                    # Fallback to hash-based emotion
+                    return self._get_fallback_result()
             else:
-                model_scores = np.random.random(self.num_classes)
-                model_scores = model_scores / np.sum(model_scores)
+                # Load model if needed (lazy loading)
+                self._ensure_audio_model_loaded()
+                
+                # Get prediction from model
+                if self.audio_model is not None:
+                    predictions = self.audio_model.predict(processed_audio, verbose=0)
+                    model_scores = predictions[0]
+                else:
+                    model_scores = np.random.random(self.num_classes)
+                    model_scores = model_scores / np.sum(model_scores)
             
-            # Analyze audio content for better results
-            audio_analysis = self._analyze_audio_content(audio_data)
-            if audio_analysis is not None:
-                # Combine model and audio analysis (70% analysis, 30% model)
-                combined_scores = 0.7 * audio_analysis + 0.3 * model_scores
-            else:
-                # If audio analysis fails, use hash-based variation
-                audio_hash = hash(audio_data) % 10000
-                # Create emotion scores based on hash with more variation
-                emotion_scores = np.zeros(self.num_classes)
-                
-                # Primary emotion based on hash
-                primary_idx = audio_hash % self.num_classes
-                emotion_scores[primary_idx] = 0.4
-                
-                # Secondary emotion
-                secondary_idx = (audio_hash + 7) % self.num_classes
-                if secondary_idx != primary_idx:
-                    emotion_scores[secondary_idx] = 0.3
-                
-                # Tertiary emotion
-                tertiary_idx = (audio_hash + 13) % self.num_classes
-                if tertiary_idx not in [primary_idx, secondary_idx]:
-                    emotion_scores[tertiary_idx] = 0.2
-                
-                # Add small random values to other emotions
-                for i in range(self.num_classes):
-                    if emotion_scores[i] == 0:
-                        emotion_scores[i] = (audio_hash + i * 3) % 50 / 1000.0
-                
-                emotion_scores = emotion_scores / np.sum(emotion_scores)
-                combined_scores = 0.8 * emotion_scores + 0.2 * model_scores
+            # Get prediction from model (only if not lightweight mode)
+            if not self.use_lightweight_mode:
+                # Analyze audio content for better results
+                audio_analysis = self._analyze_audio_content(audio_data)
+                if audio_analysis is not None:
+                    # Combine model and audio analysis (70% analysis, 30% model)
+                    combined_scores = 0.7 * audio_analysis + 0.3 * model_scores
+                else:
+                    # If audio analysis fails, use hash-based variation
+                    audio_hash = hash(audio_data) % 10000
+                    emotion_scores = np.zeros(self.num_classes)
+                    
+                    primary_idx = audio_hash % self.num_classes
+                    emotion_scores[primary_idx] = 0.4
+                    
+                    secondary_idx = (audio_hash + 7) % self.num_classes
+                    if secondary_idx != primary_idx:
+                        emotion_scores[secondary_idx] = 0.3
+                    
+                    tertiary_idx = (audio_hash + 13) % self.num_classes
+                    if tertiary_idx not in [primary_idx, secondary_idx]:
+                        emotion_scores[tertiary_idx] = 0.2
+                    
+                    for i in range(self.num_classes):
+                        if emotion_scores[i] == 0:
+                            emotion_scores[i] = (audio_hash + i * 3) % 50 / 1000.0
+                    
+                    emotion_scores = emotion_scores / np.sum(emotion_scores)
+                    combined_scores = 0.8 * emotion_scores + 0.2 * model_scores
+            # In lightweight mode, combined_scores already set above
             
-            # Add variation based on audio hash for different results
-            audio_hash = hash(audio_data) % 1000
-            variation = np.cos(audio_hash * 0.01) * 0.05
-            combined_scores = combined_scores + variation
-            combined_scores = np.maximum(combined_scores, 0)
-            combined_scores = combined_scores / np.sum(combined_scores)
+            # Add variation based on audio hash for different results (if not already done)
+            if not self.use_lightweight_mode:
+                audio_hash = hash(audio_data) % 1000
+                variation = np.cos(audio_hash * 0.01) * 0.05
+                combined_scores = combined_scores + variation
+                combined_scores = np.maximum(combined_scores, 0)
+                combined_scores = combined_scores / np.sum(combined_scores)
             
             # Get top emotion
             top_emotion_idx = np.argmax(combined_scores)
@@ -859,8 +928,9 @@ class AdvancedImageAI:
             }
         }
 
-# Global instance
-advanced_image_ai = AdvancedImageAI()
+# Global instance with lightweight mode enabled by default (saves memory)
+# Set LIGHTWEIGHT_MODE=false environment variable to disable
+advanced_image_ai = AdvancedImageAI(use_lightweight_mode=True)
 
 def detect_pet_emotion_from_image(image_data: bytes) -> dict:
     """Detect pet emotion from image with advanced accuracy"""

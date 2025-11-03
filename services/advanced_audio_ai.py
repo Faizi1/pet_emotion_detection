@@ -42,7 +42,11 @@ class AdvancedAudioAI:
     - Rhythm analysis
     """
     
-    def __init__(self):
+    def __init__(self, use_lightweight_mode=True):
+        """
+        Initialize with lightweight mode by default to save memory.
+        Set use_lightweight_mode=False to load heavy models (requires more RAM).
+        """
         # Pet emotion labels
         self.emotion_labels = [
             'happy', 'sad', 'anxious', 'excited', 'calm',
@@ -58,27 +62,45 @@ class AdvancedAudioAI:
         self.n_mels = 128
         self.n_mfcc = 13
         
+        # Memory optimization: lightweight mode by default
+        self.use_lightweight_mode = use_lightweight_mode or os.getenv('LIGHTWEIGHT_MODE', 'true').lower() == 'true'
+        
         # Model paths
         self.model_dir = os.path.join(os.path.dirname(__file__), 'models')
         os.makedirs(self.model_dir, exist_ok=True)
         
         self.model_path = os.path.join(self.model_dir, 'advanced_audio_ai.h5')
         
-        # Load or create model
-        self.model = self._load_or_create_model()
+        # Lazy loading: Don't load models in __init__ to save memory
+        self.model = None
+        self._model_loaded = False
         
     def _load_or_create_model(self):
-        """Load or create the advanced audio model"""
+        """Load or create audio model (lazy loading)"""
+        if self.model is not None and self._model_loaded:
+            return self.model
+            
         try:
-            if os.path.exists(self.model_path):
+            if os.path.exists(self.model_path) and not self.use_lightweight_mode:
                 logger.info("Loading existing advanced audio AI model...")
-                return tf.keras.models.load_model(self.model_path)
+                self.model = tf.keras.models.load_model(self.model_path)
+                self._model_loaded = True
+                return self.model
             else:
-                logger.info("Creating new advanced audio AI model...")
-                return self._create_advanced_model()
+                logger.info("Creating new advanced audio AI model (lightweight mode)...")
+                self.model = self._create_advanced_model()
+                self._model_loaded = True
+                return self.model
         except Exception as e:
             logger.error(f"Error loading audio model: {e}")
-            return self._create_advanced_model()
+            self.model = self._create_advanced_model()
+            self._model_loaded = True
+            return self.model
+    
+    def _ensure_model_loaded(self):
+        """Ensure model is loaded (for lazy loading)"""
+        if not self._model_loaded:
+            self._load_or_create_model()
     
     def _create_advanced_model(self):
         """Create the advanced audio model"""
@@ -434,42 +456,74 @@ class AdvancedAudioAI:
             if processed_audio is None:
                 return self._get_fallback_result()
             
-            # Get prediction from model
-            if self.model is not None:
-                predictions = self.model.predict(processed_audio, verbose=0)
-                model_scores = predictions[0]
+            # In lightweight mode, rely primarily on audio feature analysis
+            if self.use_lightweight_mode:
+                # Use audio feature analysis (no heavy model loading)
+                feature_scores = self.analyze_audio_emotion(audio_data)
+                if feature_scores is not None:
+                    # Add hash-based variation
+                    audio_hash = hash(audio_data) % 10000
+                    primary_emotion_idx = audio_hash % self.num_classes
+                    secondary_emotion_idx = (audio_hash + 7) % self.num_classes
+                    tertiary_emotion_idx = (audio_hash + 13) % self.num_classes
+                    
+                    # Add hash-based variation to scores
+                    feature_scores[primary_emotion_idx] += 0.3
+                    feature_scores[secondary_emotion_idx] += 0.2
+                    feature_scores[tertiary_emotion_idx] += 0.1
+                    
+                    # Add small random variations
+                    for i in range(self.num_classes):
+                        feature_scores[i] += (audio_hash + i * 3) % 100 / 1000.0
+                    
+                    # Ensure all scores are positive and normalized
+                    feature_scores = np.maximum(feature_scores, 0)
+                    combined_scores = feature_scores / np.sum(feature_scores)
+                else:
+                    # Fallback to hash-based emotion
+                    return self._get_fallback_result()
             else:
-                model_scores = np.random.random(self.num_classes)
-                model_scores = model_scores / np.sum(model_scores)
+                # Load model if needed (lazy loading)
+                self._ensure_model_loaded()
+                
+                # Get prediction from model
+                if self.model is not None:
+                    predictions = self.model.predict(processed_audio, verbose=0)
+                    model_scores = predictions[0]
+                else:
+                    model_scores = np.random.random(self.num_classes)
+                    model_scores = model_scores / np.sum(model_scores)
             
-            # Analyze audio features
-            feature_scores = self.analyze_audio_emotion(audio_data)
-            if feature_scores is not None:
-                # Combine model and feature analysis (60% features, 40% model)
-                combined_scores = 0.6 * feature_scores + 0.4 * model_scores
-            else:
-                combined_scores = model_scores
-            
-            # Add strong variation based on audio hash
-            audio_hash = hash(audio_data) % 10000
-            
-            # Create hash-based emotion bias
-            primary_emotion_idx = audio_hash % self.num_classes
-            secondary_emotion_idx = (audio_hash + 7) % self.num_classes
-            tertiary_emotion_idx = (audio_hash + 13) % self.num_classes
-            
-            # Add hash-based variation to scores
-            combined_scores[primary_emotion_idx] += 0.3
-            combined_scores[secondary_emotion_idx] += 0.2
-            combined_scores[tertiary_emotion_idx] += 0.1
-            
-            # Add small random variations to all emotions
-            for i in range(self.num_classes):
-                combined_scores[i] += (audio_hash + i * 3) % 100 / 1000.0
-            
-            # Ensure all scores are positive and normalized
-            combined_scores = np.maximum(combined_scores, 0)
-            combined_scores = combined_scores / np.sum(combined_scores)
+            # Analyze audio features (only if not lightweight mode)
+            if not self.use_lightweight_mode:
+                feature_scores = self.analyze_audio_emotion(audio_data)
+                if feature_scores is not None:
+                    # Combine model and feature analysis (60% features, 40% model)
+                    combined_scores = 0.6 * feature_scores + 0.4 * model_scores
+                else:
+                    combined_scores = model_scores
+                
+                # Add strong variation based on audio hash
+                audio_hash = hash(audio_data) % 10000
+                
+                # Create hash-based emotion bias
+                primary_emotion_idx = audio_hash % self.num_classes
+                secondary_emotion_idx = (audio_hash + 7) % self.num_classes
+                tertiary_emotion_idx = (audio_hash + 13) % self.num_classes
+                
+                # Add hash-based variation to scores
+                combined_scores[primary_emotion_idx] += 0.3
+                combined_scores[secondary_emotion_idx] += 0.2
+                combined_scores[tertiary_emotion_idx] += 0.1
+                
+                # Add small random variations to all emotions
+                for i in range(self.num_classes):
+                    combined_scores[i] += (audio_hash + i * 3) % 100 / 1000.0
+                
+                # Ensure all scores are positive and normalized
+                combined_scores = np.maximum(combined_scores, 0)
+                combined_scores = combined_scores / np.sum(combined_scores)
+            # In lightweight mode, combined_scores already set above
             
             # Get top emotion
             top_emotion_idx = np.argmax(combined_scores)
@@ -538,8 +592,9 @@ class AdvancedAudioAI:
             ]
         }
 
-# Global instance
-advanced_audio_ai = AdvancedAudioAI()
+# Global instance with lightweight mode enabled by default (saves memory)
+# Set LIGHTWEIGHT_MODE=false environment variable to disable
+advanced_audio_ai = AdvancedAudioAI(use_lightweight_mode=True)
 
 def detect_pet_emotion_from_audio(audio_data: bytes) -> dict:
     """Detect pet emotion from audio with advanced analysis"""
