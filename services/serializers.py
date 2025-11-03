@@ -70,6 +70,10 @@ class VerifyOtpRegistrationSerializer(serializers.Serializer):
     code = serializers.CharField()
 
 
+class ResendOtpRegistrationSerializer(serializers.Serializer):
+    phoneNumber = serializers.CharField()
+
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField()

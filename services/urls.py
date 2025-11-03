@@ -6,6 +6,7 @@ urlpatterns = [
     path('auth/verify', views.verify_token),
     path('auth/register', views.register),
     path('auth/verify-otp-and-register', views.verify_otp_and_register),
+    path('auth/resend-otp', views.resend_registration_otp),
     path('auth/send-otp', views.send_otp),
     path('auth/verify-otp', views.verify_otp),
     path('auth/google-signin', views.google_signin),

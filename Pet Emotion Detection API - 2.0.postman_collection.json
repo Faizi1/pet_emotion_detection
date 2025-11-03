@@ -55,6 +55,34 @@
 							},
 							"response": []
 						},
+                        {
+                            "name": "Auth - Resend Registration OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"phoneNumber\": \"{{phoneNumber}}\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}/api/auth/resend-otp",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "auth",
+                                        "resend-otp"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
 						{
 							"name": "Auth - Verify OTP and Complete Registration",
 							"event": [

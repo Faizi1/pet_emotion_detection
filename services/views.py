@@ -33,6 +33,7 @@ from .serializers import (
     SendOtpSerializer,
     VerifyOtpSerializer,
     VerifyOtpRegistrationSerializer,
+    ResendOtpRegistrationSerializer,
     LoginSerializer,
     ForgotPasswordSerializer,
     UpdateProfileSerializer,
@@ -218,6 +219,82 @@ def register(request):
             'smsService': 'twilio_failed',
             'message': 'OTP generated but SMS delivery failed. Check your Twilio configuration.'
         }, status=status.HTTP_201_CREATED)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description='Resend registration OTP to the provided phone number if a pending registration exists and is not expired',
+    request_body=ResendOtpRegistrationSerializer,
+    responses={
+        200: openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'sent': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='OTP sent status'),
+                'phoneNumber': openapi.Schema(type=openapi.TYPE_STRING, description='Phone number where OTP was sent'),
+                'smsService': openapi.Schema(type=openapi.TYPE_STRING, description='SMS service used')
+            }
+        ),
+        400: 'Bad Request - Registration not found or throttled',
+        404: 'Not Found - Registration not found'
+    }
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def resend_registration_otp(request):
+    ser = ResendOtpRegistrationSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+    phone_number = ser.validated_data['phoneNumber']
+
+    db = get_firestore()
+
+    temp_ref = db.collection('temp_registrations').document(phone_number)
+    temp_doc = temp_ref.get()
+
+    if not temp_doc.exists:
+        return Response({'detail': 'Registration not found. Please start registration again.'}, status=status.HTTP_404_NOT_FOUND)
+
+    temp_data = temp_doc.to_dict() or {}
+
+    # Check expiry: valid for 10 minutes from last otpCreatedAt
+    otp_created = temp_data.get('otpCreatedAt')
+    if otp_created:
+        time_diff = datetime.now(timezone.utc) - otp_created
+        if time_diff.total_seconds() > 600:  # 10 minutes
+            temp_ref.delete()
+            return Response({'detail': 'OTP expired. Please register again.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Basic throttle: do not resend within 60 seconds
+        if time_diff.total_seconds() < 60:
+            return Response({'detail': 'Please wait before requesting a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Generate new OTP
+    code = f"{random.randint(100000, 999999)}"
+
+    # Update OTP and timestamp, reset attempts
+    temp_ref.set({
+        'otp': code,
+        'otpCreatedAt': datetime.now(timezone.utc),
+        'attempts': 0,
+    }, merge=True)
+
+    # Send OTP via SMS
+    sms_result = sms_service.send_otp(phone_number, code, 'registration')
+
+    if sms_result.get('success'):
+        return Response({
+            'sent': True,
+            'phoneNumber': phone_number,
+            'smsService': 'Vonage'
+        })
+
+    return Response({
+        'sent': True,
+        'phoneNumber': phone_number,
+        'smsSent': False,
+        'smsError': sms_result.get('error'),
+        'smsService': 'twilio_failed',
+        'message': 'OTP regenerated but SMS delivery failed.'
+    }, status=status.HTTP_201_CREATED)
 
 
 @swagger_auto_schema(
