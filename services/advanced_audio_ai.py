@@ -5,7 +5,21 @@ Uses librosa for proper audio analysis with real emotion detection
 
 import os
 import numpy as np
+# Configure TensorFlow to use CPU only (disable GPU/CUDA for cloud deployment)
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow warnings
 import tensorflow as tf
+# Disable GPU devices explicitly
+try:
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, False)
+    tf.config.set_visible_devices([], 'GPU')
+except (RuntimeError, ValueError):
+    # GPU configuration failed, but that's fine for CPU-only deployment
+    pass
+# Suppress TensorFlow GPU warnings
+tf.get_logger().setLevel('ERROR')
 from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D, BatchNormalization, Conv2D, MaxPooling2D
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
