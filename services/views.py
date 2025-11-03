@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, date
 import random
+import math
 from typing import Any, Dict, List
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -1097,6 +1098,17 @@ def ai_detector_status(request):
 
 
 
+def _clean_nan_values(data: Any) -> Any:
+    """Recursively clean NaN values from data structures, replacing them with None."""
+    if isinstance(data, dict):
+        return {k: _clean_nan_values(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [_clean_nan_values(item) for item in data]
+    elif isinstance(data, float) and (math.isnan(data) or math.isinf(data)):
+        return None
+    return data
+
+
 @swagger_auto_schema(
     method='get',
     operation_description='Get emotion scan history for user (optionally filtered by petId)',
@@ -1130,6 +1142,8 @@ def history_list(request):
     for d in docs_list:
         item = d.to_dict()
         item['id'] = d.id
+        # Clean NaN values before serialization
+        item = _clean_nan_values(item)
         logs.append(item)
     return Response(logs)
 

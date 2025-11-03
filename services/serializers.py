@@ -39,7 +39,7 @@ class EmotionLogSerializer(serializers.Serializer):
     petId = serializers.CharField()
     timestamp = serializers.DateTimeField()
     emotion = serializers.CharField()
-    confidence = serializers.FloatField()
+    confidence = serializers.FloatField(allow_null=True, required=False)
     mediaUrl = serializers.URLField(allow_blank=True, required=False)
 
 
