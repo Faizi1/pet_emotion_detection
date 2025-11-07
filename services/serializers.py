@@ -80,7 +80,23 @@ class LoginSerializer(serializers.Serializer):
 
 
 class ForgotPasswordSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    phoneNumber = serializers.CharField(help_text="Phone number to send OTP for password reset")
+
+
+class VerifyResetOtpSerializer(serializers.Serializer):
+    phoneNumber = serializers.CharField(help_text="Phone number used for password reset")
+    code = serializers.CharField(help_text="OTP code received via SMS")
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    phoneNumber = serializers.CharField(help_text="Phone number used for password reset")
+    password = serializers.CharField(min_length=6, write_only=True, help_text="New password")
+    confirmPassword = serializers.CharField(min_length=6, write_only=True, help_text="Confirm new password")
+    
+    def validate(self, attrs):
+        if attrs['password'] != attrs['confirmPassword']:
+            raise serializers.ValidationError('Passwords do not match')
+        return attrs
 
 
 class UpdateProfileSerializer(serializers.Serializer):

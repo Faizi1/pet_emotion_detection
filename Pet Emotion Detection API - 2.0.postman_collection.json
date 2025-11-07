@@ -365,7 +365,7 @@
 					"response": []
 				},
 				{
-					"name": "Auth - Forgot Password",
+					"name": "Auth - Forgot Password (Request OTP)",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -376,7 +376,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"email\": \"john@example.com\"\n}"
+							"raw": "{\n  \"phoneNumber\": \"+1234567890\"\n}"
 						},
 						"url": {
 							"raw": "{{baseUrl}}/api/auth/forgot-password",
@@ -392,6 +392,90 @@
 					},
 					"response": []
 				},
+                {
+                    "name": "Auth - Resend Reset OTP",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phoneNumber\": \"+1234567890\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/resend-reset-otp",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "resend-reset-otp"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Verify Reset OTP",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phoneNumber\": \"+1234567890\",\n  \"code\": \"123456\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/verify-reset-otp",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "verify-reset-otp"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Reset Password",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phoneNumber\": \"+1234567890\",\n  \"password\": \"newPassword123\",\n  \"confirmPassword\": \"newPassword123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/reset-password",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "reset-password"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
 				{
 					"name": "Auth - Login (Guidance/Test Firebase SDK)",
 					"request": {

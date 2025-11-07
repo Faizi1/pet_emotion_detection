@@ -37,6 +37,8 @@ from .serializers import (
     ResendOtpRegistrationSerializer,
     LoginSerializer,
     ForgotPasswordSerializer,
+    VerifyResetOtpSerializer,
+    ResetPasswordSerializer,
     UpdateProfileSerializer,
     ChangePasswordSerializer,
     GoogleSignInSerializer,
@@ -729,28 +731,334 @@ def login_email_password(request):
 
 @swagger_auto_schema(
     method='post',
-    operation_description='Request password reset link for email',
+    operation_description='Request password reset OTP - sends OTP to phone number',
     request_body=ForgotPasswordSerializer,
     responses={
         200: openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            properties={'resetLink': openapi.Schema(type=openapi.TYPE_STRING, description='Password reset link')}
+            properties={
+                'sent': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='OTP sent status'),
+                'phoneNumber': openapi.Schema(type=openapi.TYPE_STRING, description='Phone number where OTP was sent'),
+                'smsSent': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='SMS delivery status'),
+                'smsService': openapi.Schema(type=openapi.TYPE_STRING, description='SMS service used')
+            }
         ),
-        400: 'Bad Request - Error generating reset link'
+        400: 'Bad Request - User not found or validation error',
+        404: 'Not Found - User not found'
     }
 )
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def forgot_password(request):
+    """
+    Step 1: Request password reset OTP
+    - Takes phone number
+    - Finds user by phone number
+    - Generates and sends OTP via SMS
+    - Stores OTP in temp_password_resets collection
+    """
     ser = ForgotPasswordSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
-    email = ser.validated_data['email']
+    phone_number = ser.validated_data['phoneNumber']
+    
+    db = get_firestore()
+    
+    # Find user by phone number
+    users_query = db.collection('users').where('number', '==', phone_number).limit(1)
+    users_list = list(users_query.stream())
+    
+    if not users_list:
+        return Response({'detail': 'User not found with this phone number'}, status=status.HTTP_404_NOT_FOUND)
+    
+    user_doc = users_list[0]
+    user_uid = user_doc.id
+    
+    # Get user email from Firebase Auth (needed for password reset)
     try:
-        link = get_auth().generate_password_reset_link(email)
+        user_record = get_auth().get_user(user_uid)
+        user_email = user_record.email
     except Exception as e:
-        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    # Send email via your provider, or return link for MVP
-    return Response({'resetLink': link})
+        return Response({'detail': f'Failed to get user: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if there's an existing password reset request
+    temp_ref = db.collection('temp_password_resets').document(phone_number)
+    temp_doc = temp_ref.get()
+    
+    if temp_doc.exists:
+        temp_data = temp_doc.to_dict() or {}
+        otp_created = temp_data.get('otpCreatedAt')
+        
+        # Check if OTP is still valid (10 minutes)
+        if otp_created:
+            time_diff = datetime.now(timezone.utc) - otp_created
+            if time_diff.total_seconds() < 60:
+                return Response({'detail': 'Please wait before requesting a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Generate OTP
+    code = f"{random.randint(100000, 999999)}"
+    
+    # Store OTP in temp_password_resets collection
+    temp_ref.set({
+        'phoneNumber': phone_number,
+        'uid': user_uid,
+        'email': user_email,
+        'otp': code,
+        'otpCreatedAt': datetime.now(timezone.utc),
+        'attempts': 0,
+        'otpVerified': False,
+        'otpVerifiedAt': None,
+    }, merge=True)
+    
+    # Send OTP via Vonage SMS
+    sms_result = sms_service.send_otp(phone_number, code, 'reset')
+    
+    if sms_result.get('success'):
+        return Response({
+            'sent': True,
+            'phoneNumber': phone_number,
+            'smsSent': True,
+            'smsService': sms_result.get('provider', sms_result.get('service', 'vonage')),
+            'messageSid': sms_result.get('message_id') or sms_result.get('message_sid')
+        })
+    else:
+        return Response({
+            'sent': True,
+            'phoneNumber': phone_number,
+            'smsSent': False,
+            'smsService': sms_result.get('provider', sms_result.get('service', 'vonage')),
+            'message': 'OTP generated but SMS delivery failed. Check your SMS configuration.'
+        }, status=status.HTTP_201_CREATED)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description='Resend password reset OTP - re-sends OTP to phone number if previous request exists',
+    request_body=ForgotPasswordSerializer,
+    responses={
+        200: openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'sent': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='OTP sent status'),
+                'phoneNumber': openapi.Schema(type=openapi.TYPE_STRING, description='Phone number where OTP was sent'),
+                'smsSent': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='SMS delivery status'),
+                'smsService': openapi.Schema(type=openapi.TYPE_STRING, description='SMS service used')
+            }
+        ),
+        400: 'Bad Request - Validation error or throttled',
+        404: 'Not Found - Reset request not found'
+    }
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def resend_reset_otp(request):
+    ser = ForgotPasswordSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+    phone_number = ser.validated_data['phoneNumber']
+    
+    db = get_firestore()
+    temp_ref = db.collection('temp_password_resets').document(phone_number)
+    temp_doc = temp_ref.get()
+    
+    if not temp_doc.exists:
+        return Response({'detail': 'Password reset request not found. Please request a new OTP.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    temp_data = temp_doc.to_dict() or {}
+    otp_created = temp_data.get('otpCreatedAt')
+    
+    # Throttle: require at least 60 seconds between resends
+    if otp_created:
+        time_diff = datetime.now(timezone.utc) - otp_created
+        if time_diff.total_seconds() < 60:
+            wait_seconds = int(60 - time_diff.total_seconds())
+            return Response({'detail': f'Please wait {wait_seconds} seconds before requesting a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Generate new OTP
+    code = f"{random.randint(100000, 999999)}"
+    
+    temp_ref.set({
+        'otp': code,
+        'otpCreatedAt': datetime.now(timezone.utc),
+        'attempts': 0,
+        'otpVerified': False,
+        'otpVerifiedAt': None,
+    }, merge=True)
+    
+    sms_result = sms_service.send_otp(phone_number, code, 'reset')
+    
+    if sms_result.get('success'):
+        return Response({
+            'sent': True,
+            'phoneNumber': phone_number,
+            'smsSent': True,
+            'smsService': sms_result.get('provider', sms_result.get('service', 'vonage')),
+            'messageSid': sms_result.get('message_id') or sms_result.get('message_sid')
+        })
+    else:
+        return Response({
+            'sent': True,
+            'phoneNumber': phone_number,
+            'smsSent': False,
+            'smsService': sms_result.get('provider', sms_result.get('service', 'vonage')),
+            'message': 'OTP generated but SMS delivery failed. Check your SMS configuration.'
+        }, status=status.HTTP_201_CREATED)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description='Verify OTP for password reset - verifies the OTP code sent to phone number',
+    request_body=VerifyResetOtpSerializer,
+    responses={
+        200: openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'verified': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='OTP verification status'),
+                'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message')
+            }
+        ),
+        400: 'Bad Request - Invalid OTP, expired OTP, or too many attempts',
+        404: 'Not Found - Password reset request not found'
+    }
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_reset_otp(request):
+    """
+    Step 2: Verify OTP for password reset
+    - Takes phone number and OTP code
+    - Verifies OTP code matches
+    - Checks OTP hasn't expired (10 minutes)
+    - Checks attempts (max 3 failed attempts)
+    - Marks OTP as verified in temp_password_resets
+    """
+    ser = VerifyResetOtpSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+    
+    phone_number = ser.validated_data['phoneNumber']
+    code = ser.validated_data['code']
+    
+    db = get_firestore()
+    
+    # Get temporary password reset data
+    temp_ref = db.collection('temp_password_resets').document(phone_number)
+    temp_doc = temp_ref.get()
+    
+    if not temp_doc.exists:
+        return Response({'detail': 'Password reset request not found or expired. Please request a new OTP.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    temp_data = temp_doc.to_dict() or {}
+    
+    # Verify OTP code
+    if temp_data.get('otp') != code:
+        # Increment attempts
+        attempts = temp_data.get('attempts', 0) + 1
+        temp_ref.update({'attempts': attempts})
+        
+        if attempts >= 3:
+            # Delete temp password reset after 3 failed attempts
+            temp_ref.delete()
+            return Response({'detail': 'Too many failed attempts. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({'detail': 'Invalid OTP code'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if OTP is not expired (valid for 10 minutes)
+    otp_created = temp_data.get('otpCreatedAt')
+    if otp_created:
+        time_diff = datetime.now(timezone.utc) - otp_created
+        if time_diff.total_seconds() > 600:  # 10 minutes
+            temp_ref.delete()
+            return Response({'detail': 'OTP expired. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Mark OTP as verified and clear stored code
+    temp_ref.update({
+        'otpVerified': True,
+        'otpVerifiedAt': datetime.now(timezone.utc),
+        'otp': None,
+        'attempts': 0,
+    })
+    
+    return Response({
+        'verified': True,
+        'message': 'OTP verified successfully. You can now reset your password.'
+    })
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description='Reset password - sets new password after OTP verification',
+    request_body=ResetPasswordSerializer,
+    responses={
+        200: openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'success': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Password reset status'),
+                'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message')
+            }
+        ),
+        400: 'Bad Request - OTP not verified, expired, or validation error',
+        404: 'Not Found - Password reset request not found'
+    }
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def reset_password(request):
+    """
+    Step 3: Reset password after OTP verification
+    - Takes phone number, new password, and confirm password
+    - Checks that OTP was previously verified
+    - Validates password match
+    - Updates password in Firebase Auth
+    - Cleans up temp password reset data
+    """
+    ser = ResetPasswordSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+    
+    phone_number = ser.validated_data['phoneNumber']
+    new_password = ser.validated_data['password']
+    
+    db = get_firestore()
+    
+    # Get temporary password reset data
+    temp_ref = db.collection('temp_password_resets').document(phone_number)
+    temp_doc = temp_ref.get()
+    
+    if not temp_doc.exists:
+        return Response({'detail': 'Password reset request not found or expired. Please request a new OTP.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    temp_data = temp_doc.to_dict() or {}
+    
+    # Check if OTP was verified
+    if not temp_data.get('otpVerified'):
+        return Response({'detail': 'OTP not verified. Please verify OTP first.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if verification is not expired (valid for 10 minutes from verification)
+    otp_verified_at = temp_data.get('otpVerifiedAt')
+    if otp_verified_at:
+        time_diff = datetime.now(timezone.utc) - otp_verified_at
+        if time_diff.total_seconds() > 600:  # 10 minutes
+            temp_ref.delete()
+            return Response({'detail': 'OTP verification expired. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Get user UID from temp data
+    user_uid = temp_data.get('uid')
+    
+    if not user_uid:
+        temp_ref.delete()
+        return Response({'detail': 'Invalid password reset request'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Update password in Firebase Auth
+    try:
+        get_auth().update_user(user_uid, password=new_password)
+    except Exception as e:
+        temp_ref.delete()
+        return Response({'detail': f'Failed to update password: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Clean up temporary password reset data
+    temp_ref.delete()
+    
+    return Response({
+        'success': True,
+        'message': 'Password reset successfully'
+    })
 
 
 @swagger_auto_schema(
