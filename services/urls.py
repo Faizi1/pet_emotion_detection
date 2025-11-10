@@ -18,11 +18,13 @@ urlpatterns = [
     path('auth/reset-password', views.reset_password),
     path('auth/change-password', views.change_password),
     path('me', views.me),
+    path('account', views.delete_account),
     path('profile', views.update_profile),
     path('pets', views.pets_list_create),
     path('pets/<str:pet_id>', views.pets_detail),
     path('scans', views.scans_create),
     path('history', views.history_list),
+    path('history/<str:log_id>', views.history_detail),
     path('admin/analytics', views.admin_analytics),
     
     # Community/Posts endpoints

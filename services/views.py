@@ -1088,6 +1088,48 @@ def me(request):
 
 
 @swagger_auto_schema(
+    method='delete',
+    operation_description='Delete the authenticated user account and all associated data',
+    responses={
+        204: 'Account deleted',
+        401: 'Unauthorized'
+    }
+)
+@api_view(['DELETE'])
+def delete_account(request):
+    user: FirebaseUser = request.user  # type: ignore
+    db = get_firestore()
+
+    # Delete emotion logs subcollection
+    try:
+        for log_doc in _logs_collection(user.uid).stream():
+            log_doc.reference.delete()
+    except Exception:
+        pass
+
+    # Delete pets subcollection
+    try:
+        for pet_doc in _pets_collection(user.uid).stream():
+            pet_doc.reference.delete()
+    except Exception:
+        pass
+
+    # Delete user document
+    try:
+        db.collection('users').document(user.uid).delete()
+    except Exception:
+        pass
+
+    # Attempt to delete Firebase Auth user
+    try:
+        get_auth().delete_user(user.uid)
+    except Exception:
+        pass
+
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@swagger_auto_schema(
     method='patch',
     operation_description='Update personal profile details (name, number, location, photoUrl)',
     request_body=UpdateProfileSerializer,
@@ -1191,7 +1233,10 @@ def pets_list_create(request):
             pet['id'] = d.id
             pets.append(pet)
         return Response(pets)
-    data = request.data
+    data = request.data.copy()
+    photo_file = request.FILES.get('photo') or request.FILES.get('photoUrl')
+    if photo_file:
+        data.pop('photoUrl', None)
     ser = PetSerializer(data=data)
     ser.is_valid(raise_exception=True)
     payload = dict(ser.validated_data)
@@ -1199,9 +1244,35 @@ def pets_list_create(request):
     if isinstance(dob, date):
         payload['dateOfBirth'] = datetime.combine(dob, datetime.min.time(), tzinfo=timezone.utc)
     ref = col.document()
+    if photo_file:
+        content_type = getattr(photo_file, 'content_type', 'application/octet-stream')
+        if not content_type.startswith('image/'):
+            return Response(
+                {'detail': f'Invalid file type: {content_type}. Only images are allowed.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            photo_url = upload_bytes(
+                photo_file.read(),
+                content_type,
+                path_prefix=f"{user.uid}/pets/{ref.id}/"
+            )
+        except Exception as e:
+            return Response(
+                {'detail': f'Error uploading image: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        if not photo_url or not photo_url.strip():
+            return Response(
+                {'detail': 'Failed to upload pet image. Storage might not be configured.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        payload['photoUrl'] = photo_url
     ref.set(payload)
     created = ser.validated_data.copy()
     created['id'] = ref.id
+    if 'photoUrl' in payload:
+        created['photoUrl'] = payload['photoUrl']
     return Response(created, status=status.HTTP_201_CREATED)
 
 
@@ -1257,13 +1328,44 @@ def pets_detail(request, pet_id: str):
         pet['id'] = snap.id
         return Response(pet)
     if request.method in ['PUT', 'PATCH']:
-        data = request.data
-        ser = PetSerializer(data=data, partial=(request.method == 'PATCH'))
+        data = request.data.copy()
+        partial_update = request.method == 'PATCH'
+        photo_file = request.FILES.get('photo') or request.FILES.get('photoUrl')
+        if photo_file:
+            data.pop('photoUrl', None)
+        ser = PetSerializer(data=data, partial=partial_update)
         ser.is_valid(raise_exception=True)
         payload = dict(ser.validated_data)
         dob = payload.get('dateOfBirth')
         if isinstance(dob, date):
             payload['dateOfBirth'] = datetime.combine(dob, datetime.min.time(), tzinfo=timezone.utc)
+        if photo_file:
+            content_type = getattr(photo_file, 'content_type', 'application/octet-stream')
+            if not content_type.startswith('image/'):
+                return Response(
+                    {'detail': f'Invalid file type: {content_type}. Only images are allowed.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            try:
+                photo_url = upload_bytes(
+                    photo_file.read(),
+                    content_type,
+                    path_prefix=f"{user.uid}/pets/{pet_id}/"
+                )
+            except Exception as e:
+                return Response(
+                    {'detail': f'Error uploading image: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            if not photo_url or not photo_url.strip():
+                return Response(
+                    {'detail': 'Failed to upload pet image. Storage might not be configured.'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            payload['photoUrl'] = photo_url
+        if not payload:
+            # No recognized fields were provided (e.g., only file upload)
+            return Response({'detail': 'No valid fields to update'}, status=status.HTTP_400_BAD_REQUEST)
         ref.update(payload)
         updated = ref.get().to_dict()
         updated['id'] = pet_id
@@ -1480,6 +1582,18 @@ def _clean_nan_values(data: Any) -> Any:
     return data
 
 
+def _delete_history_entry(user_uid: str, log_id: str, pet_id: Optional[str] = None) -> Response:
+    ref = _logs_collection(user_uid).document(log_id)
+    snap = ref.get()
+    if not snap.exists:
+        return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    log_data = snap.to_dict() or {}
+    if pet_id and log_data.get('petId') != pet_id:
+        return Response({'detail': 'History entry not found for provided petId'}, status=status.HTTP_400_BAD_REQUEST)
+    ref.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 @swagger_auto_schema(
     method='get',
     operation_description='Get emotion scan history for user (optionally filtered by petId)',
@@ -1497,9 +1611,42 @@ def _clean_nan_values(data: Any) -> Any:
         401: 'Unauthorized'
     }
 )
-@api_view(['GET'])
+@swagger_auto_schema(
+    method='delete',
+    operation_description='Delete a specific emotion scan history entry by ID',
+    manual_parameters=[
+        openapi.Parameter(
+            'id',
+            openapi.IN_QUERY,
+            description="ID of the history entry to delete",
+            type=openapi.TYPE_STRING,
+            required=True
+        ),
+        openapi.Parameter(
+            'petId',
+            openapi.IN_QUERY,
+            description="(Optional) Pet ID to validate against the history entry",
+            type=openapi.TYPE_STRING,
+            required=False
+        )
+    ],
+    responses={
+        204: 'Deleted successfully',
+        400: 'Bad Request - Missing id or pet mismatch',
+        404: 'Not Found - Log not found',
+        401: 'Unauthorized'
+    }
+)
+@api_view(['GET', 'DELETE'])
 def history_list(request):
     user: FirebaseUser = request.user  # type: ignore
+    if request.method == 'DELETE':
+        log_id = request.query_params.get('id')
+        if not log_id:
+            return Response({'detail': 'id query parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+        pet_id = request.query_params.get('petId')
+        return _delete_history_entry(user.uid, log_id, pet_id)
+
     pet_id = request.query_params.get('petId')
     q = _logs_collection(user.uid)
     if pet_id:
@@ -1534,6 +1681,32 @@ def history_list(request):
         item = _clean_nan_values(item)
         logs.append(item)
     return Response(logs)
+
+
+@swagger_auto_schema(
+    method='delete',
+    operation_description='Delete a specific emotion scan history entry',
+    manual_parameters=[
+        openapi.Parameter(
+            'petId',
+            openapi.IN_QUERY,
+            description='ID of the pet associated with the history entry',
+            type=openapi.TYPE_STRING,
+            required=False,
+        ),
+    ],
+    responses={
+        204: 'Deleted successfully',
+        400: 'Bad Request - petId mismatch',
+        404: 'Not Found - Log not found',
+        401: 'Unauthorized'
+    }
+)
+@api_view(['DELETE'])
+def history_detail(request, log_id: str):
+    user: FirebaseUser = request.user  # type: ignore
+    pet_id = request.query_params.get('petId')
+    return _delete_history_entry(user.uid, log_id, pet_id)
 
 
 @swagger_auto_schema(
