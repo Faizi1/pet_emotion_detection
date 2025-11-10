@@ -41,6 +41,7 @@ class EmotionLogSerializer(serializers.Serializer):
     emotion = serializers.CharField()
     confidence = serializers.FloatField(allow_null=True, required=False)
     mediaUrl = serializers.URLField(allow_blank=True, required=False)
+    pet = PetSerializer(required=False, allow_null=True)
 
 
 class RegisterSerializer(serializers.Serializer):

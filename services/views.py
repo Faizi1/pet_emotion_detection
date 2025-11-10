@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, date
 import random
 import math
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -1510,9 +1510,26 @@ def history_list(request):
         # Missing or building composite index; fallback without ordering
         docs_list = list(q.limit(100).stream())
     logs: List[Dict[str, Any]] = []
+    pets_cache: Dict[str, Optional[Dict[str, Any]]] = {}
+    pets_collection = _pets_collection(user.uid)
     for d in docs_list:
         item = d.to_dict()
         item['id'] = d.id
+        pet_ref_id = item.get('petId')
+        if pet_ref_id:
+            if pet_ref_id not in pets_cache:
+                try:
+                    pet_snapshot = pets_collection.document(pet_ref_id).get()
+                except Exception:
+                    pet_snapshot = None
+                if pet_snapshot and pet_snapshot.exists:
+                    pet_data = pet_snapshot.to_dict() or {}
+                    pet_data['id'] = pet_snapshot.id
+                    pets_cache[pet_ref_id] = _clean_nan_values(pet_data)
+                else:
+                    pets_cache[pet_ref_id] = None
+            if pets_cache.get(pet_ref_id) is not None:
+                item['pet'] = pets_cache[pet_ref_id]
         # Clean NaN values before serialization
         item = _clean_nan_values(item)
         logs.append(item)
