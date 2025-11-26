@@ -1205,7 +1205,16 @@ def change_password(request):
 
 @swagger_auto_schema(
     method='get',
-    operation_description='Get list of user pets',
+    operation_description='Get list of user pets. Supports search filtering across name, gender, species, breed, and date of birth.',
+    manual_parameters=[
+        openapi.Parameter(
+            'search',
+            openapi.IN_QUERY,
+            description="Search query to filter pets by name, gender, species, breed, or date of birth (case-insensitive partial match)",
+            type=openapi.TYPE_STRING,
+            required=False
+        )
+    ],
     responses={
         200: PetSerializer(many=True),
         401: 'Unauthorized'
@@ -1232,6 +1241,82 @@ def pets_list_create(request):
             pet = d.to_dict()
             pet['id'] = d.id
             pets.append(pet)
+        
+        # Apply search filter if provided
+        search_query = request.query_params.get('search', '').strip()
+        if search_query:
+            search_lower = search_query.lower()
+            filtered_pets = []
+            
+            for pet in pets:
+                match_found = False
+                
+                # Check name
+                name = (pet.get('name') or '').lower()
+                if search_lower in name:
+                    match_found = True
+                
+                # Check gender
+                if not match_found:
+                    gender = (pet.get('gender') or '').lower()
+                    if search_lower in gender:
+                        match_found = True
+                
+                # Check species
+                if not match_found:
+                    species = (pet.get('species') or '').lower()
+                    if search_lower in species:
+                        match_found = True
+                
+                # Check breed
+                if not match_found:
+                    breed = (pet.get('breed') or '').lower()
+                    if search_lower in breed:
+                        match_found = True
+                
+                # Check date of birth (convert to string format)
+                if not match_found:
+                    date_of_birth = pet.get('dateOfBirth')
+                    if date_of_birth:
+                        # Handle both datetime and date objects
+                        dob_str = ''
+                        try:
+                            if isinstance(date_of_birth, datetime):
+                                dob_str = date_of_birth.strftime('%Y-%m-%d').lower()
+                                dob_date = date_of_birth.date()
+                            elif isinstance(date_of_birth, date):
+                                dob_str = date_of_birth.strftime('%Y-%m-%d').lower()
+                                dob_date = date_of_birth
+                            else:
+                                dob_str = str(date_of_birth).lower()
+                                dob_date = None
+                            
+                            # Check if search matches date in various formats
+                            if search_lower in dob_str or search_lower in dob_str.replace('-', '/'):
+                                match_found = True
+                            
+                            # Also check alternative date formats
+                            if not match_found and dob_date:
+                                formats_to_check = [
+                                    dob_date.strftime('%m/%d/%Y'),
+                                    dob_date.strftime('%d/%m/%Y'),
+                                    dob_date.strftime('%Y/%m/%d'),
+                                ]
+                                for fmt in formats_to_check:
+                                    if search_lower in fmt.lower():
+                                        match_found = True
+                                        break
+                        except Exception:
+                            # If date parsing fails, try string matching
+                            if search_lower in str(date_of_birth).lower():
+                                match_found = True
+                
+                # Add pet if any field matched
+                if match_found:
+                    filtered_pets.append(pet)
+            
+            pets = filtered_pets
+        
         return Response(pets)
     data = request.data.copy()
     photo_file = request.FILES.get('photo') or request.FILES.get('photoUrl')
@@ -1596,7 +1681,7 @@ def _delete_history_entry(user_uid: str, log_id: str, pet_id: Optional[str] = No
 
 @swagger_auto_schema(
     method='get',
-    operation_description='Get emotion scan history for user (optionally filtered by petId)',
+    operation_description='Get emotion scan history for user. Supports filtering by petId, search query (across emotion, pet name, species, breed), and date range.',
     manual_parameters=[
         openapi.Parameter(
             'petId',
@@ -1604,10 +1689,32 @@ def _delete_history_entry(user_uid: str, log_id: str, pet_id: Optional[str] = No
             description="Filter by pet ID",
             type=openapi.TYPE_STRING,
             required=False
+        ),
+        openapi.Parameter(
+            'search',
+            openapi.IN_QUERY,
+            description="Search query to filter by emotion, pet name, species, or breed (case-insensitive partial match)",
+            type=openapi.TYPE_STRING,
+            required=False
+        ),
+        openapi.Parameter(
+            'startDate',
+            openapi.IN_QUERY,
+            description="Start date for date range filter (ISO 8601 format: YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss)",
+            type=openapi.TYPE_STRING,
+            required=False
+        ),
+        openapi.Parameter(
+            'endDate',
+            openapi.IN_QUERY,
+            description="End date for date range filter (ISO 8601 format: YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss)",
+            type=openapi.TYPE_STRING,
+            required=False
         )
     ],
     responses={
         200: EmotionLogSerializer(many=True),
+        400: 'Bad Request - Invalid date format',
         401: 'Unauthorized'
     }
 )
@@ -1648,17 +1755,86 @@ def history_list(request):
         return _delete_history_entry(user.uid, log_id, pet_id)
 
     pet_id = request.query_params.get('petId')
+    search_query = request.query_params.get('search', '').strip()
+    start_date_str = request.query_params.get('startDate', '').strip()
+    end_date_str = request.query_params.get('endDate', '').strip()
+    
+    # Parse date range filters
+    start_date = None
+    end_date = None
+    
+    if start_date_str:
+        try:
+            # Try parsing ISO format with time first
+            if 'T' in start_date_str:
+                start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+            else:
+                # If just date, set to start of day
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+                start_date = datetime.combine(start_date.date(), datetime.min.time(), tzinfo=timezone.utc)
+            if start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return Response(
+                {'detail': f'Invalid startDate format. Use YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    if end_date_str:
+        try:
+            # Try parsing ISO format with time first
+            if 'T' in end_date_str:
+                end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
+            else:
+                # If just date, set to end of day
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+                end_date = datetime.combine(end_date.date(), datetime.max.time().replace(microsecond=0), tzinfo=timezone.utc)
+            if end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return Response(
+                {'detail': f'Invalid endDate format. Use YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    # Validate date range
+    if start_date and end_date and start_date > end_date:
+        return Response(
+            {'detail': 'startDate must be before or equal to endDate'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
     q = _logs_collection(user.uid)
     if pet_id:
         q = q.where('petId', '==', pet_id)
+    
+    # Apply date range filter if provided
+    # Firestore supports range queries on timestamp field even with petId filter
+    if start_date:
+        q = q.where('timestamp', '>=', start_date)
+    if end_date:
+        q = q.where('timestamp', '<=', end_date)
+    
+    query_failed = False
     try:
         docs_list = list(q.order_by('timestamp', direction='DESCENDING').limit(100).stream())
     except FailedPrecondition:
         # Missing or building composite index; fallback without ordering
-        docs_list = list(q.limit(100).stream())
+        query_failed = True
+        # If date filters are used, we'll need to apply them in memory
+        if start_date or end_date:
+            # Fetch more records to filter in memory
+            q_fallback = _logs_collection(user.uid)
+            if pet_id:
+                q_fallback = q_fallback.where('petId', '==', pet_id)
+            docs_list = list(q_fallback.limit(500).stream())
+        else:
+            docs_list = list(q.limit(100).stream())
+    
     logs: List[Dict[str, Any]] = []
     pets_cache: Dict[str, Optional[Dict[str, Any]]] = {}
     pets_collection = _pets_collection(user.uid)
+    
     for d in docs_list:
         item = d.to_dict()
         item['id'] = d.id
@@ -1680,6 +1856,110 @@ def history_list(request):
         # Clean NaN values before serialization
         item = _clean_nan_values(item)
         logs.append(item)
+    
+    # Apply date range filter in memory if Firestore query failed (fallback for index issues)
+    if query_failed and (start_date or end_date):
+        filtered_logs = []
+        for log in logs:
+            log_timestamp = log.get('timestamp')
+            if not log_timestamp:
+                continue
+            
+            # Convert Firestore timestamp to datetime for comparison
+            log_dt = None
+            if isinstance(log_timestamp, datetime):
+                log_dt = log_timestamp
+            else:
+                # Try to handle Firestore timestamp objects
+                try:
+                    # Firestore timestamp has timestamp() method
+                    if hasattr(log_timestamp, 'timestamp'):
+                        log_dt = datetime.fromtimestamp(log_timestamp.timestamp(), tz=timezone.utc)
+                    # Or it might be a datetime-like object
+                    elif hasattr(log_timestamp, 'year'):
+                        log_dt = datetime(
+                            log_timestamp.year, log_timestamp.month, log_timestamp.day,
+                            getattr(log_timestamp, 'hour', 0), getattr(log_timestamp, 'minute', 0),
+                            getattr(log_timestamp, 'second', 0), tzinfo=timezone.utc
+                        )
+                except Exception:
+                    continue
+            
+            if not log_dt:
+                continue
+            
+            # Ensure timezone aware
+            if log_dt.tzinfo is None:
+                log_dt = log_dt.replace(tzinfo=timezone.utc)
+            
+            # Check date range
+            if start_date and log_dt < start_date:
+                continue
+            if end_date and log_dt > end_date:
+                continue
+            
+            filtered_logs.append(log)
+        logs = filtered_logs
+        
+        # Re-sort by timestamp descending after filtering
+        try:
+            def get_timestamp_key(x):
+                ts = x.get('timestamp')
+                if isinstance(ts, datetime):
+                    return ts
+                elif hasattr(ts, 'timestamp'):
+                    return datetime.fromtimestamp(ts.timestamp(), tz=timezone.utc)
+                return datetime.min.replace(tzinfo=timezone.utc)
+            logs.sort(key=get_timestamp_key, reverse=True)
+        except Exception:
+            pass
+    
+    # Apply search filter if provided (after fetching all data to search in nested pet fields)
+    if search_query:
+        search_lower = search_query.lower()
+        filtered_logs = []
+        
+        for log in logs:
+            match_found = False
+            
+            # Check emotion
+            emotion = (log.get('emotion') or '').lower()
+            if search_lower in emotion:
+                match_found = True
+            
+            # Check pet information if available
+            if not match_found and log.get('pet'):
+                pet = log.get('pet', {})
+                
+                # Check pet name
+                pet_name = (pet.get('name') or '').lower()
+                if search_lower in pet_name:
+                    match_found = True
+                
+                # Check pet species
+                if not match_found:
+                    pet_species = (pet.get('species') or '').lower()
+                    if search_lower in pet_species:
+                        match_found = True
+                
+                # Check pet breed
+                if not match_found:
+                    pet_breed = (pet.get('breed') or '').lower()
+                    if search_lower in pet_breed:
+                        match_found = True
+            
+            # Add log if any field matched
+            if match_found:
+                filtered_logs.append(log)
+        
+        logs = filtered_logs
+        
+        # Re-sort by timestamp descending after filtering
+        try:
+            logs.sort(key=lambda x: x.get('timestamp') or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+        except Exception:
+            pass
+    
     return Response(logs)
 
 
@@ -1749,7 +2029,7 @@ def admin_analytics(request):
 
 @swagger_auto_schema(
     method='get',
-    operation_description='Get all public posts (community feed)',
+    operation_description='Get all public posts (community feed). Returns posts sorted by newest first, with current user\'s posts appearing at the top.',
     manual_parameters=[
         openapi.Parameter(
             'limit',
@@ -1779,17 +2059,52 @@ def community_posts_list(request):
     
     db = get_firestore()
     
-    # Get public posts ordered by creation time (newest first)
-    posts_query = _posts_collection().where('isPublic', '==', True).order_by('createdAt', direction='DESCENDING')
+    # Get user's own posts ordered by creation time (newest first)
+    user_posts_query = _posts_collection().where('authorId', '==', user.uid).where('isPublic', '==', True).order_by('createdAt', direction='DESCENDING')
     
     try:
-        posts_docs = list(posts_query.offset(offset).limit(limit).stream())
+        user_posts_docs = list(user_posts_query.stream())
     except FailedPrecondition:
         # Fallback without ordering if index is not available
-        posts_docs = list(_posts_collection().where('isPublic', '==', True).offset(offset).limit(limit).stream())
+        user_posts_docs = list(_posts_collection().where('authorId', '==', user.uid).where('isPublic', '==', True).stream())
+        # Sort manually by createdAt if available
+        def get_created_at(doc):
+            created_at = doc.to_dict().get('createdAt')
+            if created_at is None:
+                return datetime.min.replace(tzinfo=timezone.utc)
+            return created_at if isinstance(created_at, datetime) else datetime.min.replace(tzinfo=timezone.utc)
+        user_posts_docs.sort(key=get_created_at, reverse=True)
+    
+    # Get all public posts ordered by creation time (newest first)
+    all_posts_query = _posts_collection().where('isPublic', '==', True).order_by('createdAt', direction='DESCENDING')
+    
+    try:
+        all_posts_docs = list(all_posts_query.stream())
+    except FailedPrecondition:
+        # Fallback without ordering if index is not available
+        all_posts_docs = list(_posts_collection().where('isPublic', '==', True).stream())
+        # Sort manually by createdAt if available
+        def get_created_at_all(doc):
+            created_at = doc.to_dict().get('createdAt')
+            if created_at is None:
+                return datetime.min.replace(tzinfo=timezone.utc)
+            return created_at if isinstance(created_at, datetime) else datetime.min.replace(tzinfo=timezone.utc)
+        all_posts_docs.sort(key=get_created_at_all, reverse=True)
+    
+    # Create a set of user's post IDs to filter them out from all posts
+    user_post_ids = {doc.id for doc in user_posts_docs}
+    
+    # Filter out user's posts from all posts and combine: user's posts first, then others
+    other_posts_docs = [doc for doc in all_posts_docs if doc.id not in user_post_ids]
+    
+    # Combine lists: user's posts first, then other posts (both already sorted by newest first)
+    all_posts_combined = list(user_posts_docs) + other_posts_docs
+    
+    # Apply pagination to the combined list
+    paginated_posts = all_posts_combined[offset:offset + limit]
     
     posts = []
-    for doc in posts_docs:
+    for doc in paginated_posts:
         post_data = doc.to_dict()
         post_data['id'] = doc.id
         
