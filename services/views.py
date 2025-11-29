@@ -1131,9 +1131,46 @@ def delete_account(request):
 
 @swagger_auto_schema(
     method='patch',
-    operation_description='Update personal profile details (name, number, location, photoUrl)',
-    request_body=UpdateProfileSerializer,
-    responses={200: 'Profile updated', 400: 'Validation error', 401: 'Unauthorized'}
+    operation_description='Update personal profile details. Accepts form data (multipart/form-data) with all fields optional. You can update any combination of: name, number, location, and/or photoUrl (file upload).',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'name': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='User name (optional)'
+            ),
+            'number': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='Phone number (optional)'
+            ),
+            'location': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='User location (optional)'
+            ),
+            'photoUrl': openapi.Schema(
+                type=openapi.TYPE_FILE,
+                description='Profile photo file upload - accepts image files (optional)'
+            ),
+        },
+        required=[]  # All fields are optional
+    ),
+    consumes=['multipart/form-data'],
+    responses={
+        200: openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'detail': openapi.Schema(type=openapi.TYPE_STRING, description='Success message'),
+                'updated': openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    description='Object containing the fields that were updated'
+                )
+            },
+            required=[]
+        ),
+        400: 'Validation error',
+        401: 'Unauthorized',
+        500: 'Failed to upload profile photo'
+    }
 )
 @api_view(['PATCH'])
 def update_profile(request):
@@ -1145,7 +1182,33 @@ def update_profile(request):
     db = get_firestore()
     user_ref = db.collection('users').document(user.uid)
     update_data: Dict[str, Any] = {}
-    for key in ['name', 'number', 'location', 'photoUrl']:
+    
+    # Handle file upload for photoUrl
+    if 'photoUrl' in data and data['photoUrl']:
+        file = data['photoUrl']
+        content_type = getattr(file, 'content_type', 'image/jpeg')
+        
+        # Read file content
+        file_content = file.read()
+        
+        # Upload file
+        try:
+            photo_url = upload_bytes(file_content, content_type, path_prefix=f"{user.uid}/profile/")
+            if photo_url:
+                update_data['photoUrl'] = photo_url
+            else:
+                return Response(
+                    {'detail': 'Failed to upload profile photo'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        except Exception as e:
+            return Response(
+                {'detail': f'Failed to upload profile photo: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    # Handle other fields
+    for key in ['name', 'number', 'location']:
         if key in data:
             update_data[key] = data[key]
 
@@ -1222,8 +1285,45 @@ def change_password(request):
 )
 @swagger_auto_schema(
     method='post',
-    operation_description='Create a new pet',
-    request_body=PetSerializer,
+    operation_description='Create a new pet. Accepts form data (multipart/form-data) with photo/photoUrl as file upload.',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'name': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='Pet name (required)'
+            ),
+            'gender': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                enum=['male', 'female'],
+                description='Pet gender (required)'
+            ),
+            'species': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                enum=['dog', 'cat'],
+                description='Pet species (required)'
+            ),
+            'breed': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='Pet breed (optional)'
+            ),
+            'dateOfBirth': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_DATE,
+                description='Date of birth in YYYY-MM-DD format (optional)'
+            ),
+            'photo': openapi.Schema(
+                type=openapi.TYPE_FILE,
+                description='Pet photo file upload - accepts image files (optional, can use photo or photoUrl)'
+            ),
+            'photoUrl': openapi.Schema(
+                type=openapi.TYPE_FILE,
+                description='Pet photo file upload - accepts image files (optional, can use photo or photoUrl)'
+            ),
+        },
+        required=['name', 'gender', 'species']
+    ),
+    consumes=['multipart/form-data'],
     responses={
         201: PetSerializer,
         400: 'Bad Request - Validation error',
@@ -1372,8 +1472,45 @@ def pets_list_create(request):
 )
 @swagger_auto_schema(
     method='put',
-    operation_description='Update pet details (full update)',
-    request_body=PetSerializer,
+    operation_description='Update pet details (full update). Accepts form data (multipart/form-data) with photo/photoUrl as file upload.',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'name': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='Pet name (required)'
+            ),
+            'gender': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                enum=['male', 'female'],
+                description='Pet gender (required)'
+            ),
+            'species': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                enum=['dog', 'cat'],
+                description='Pet species (required)'
+            ),
+            'breed': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='Pet breed (optional)'
+            ),
+            'dateOfBirth': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_DATE,
+                description='Date of birth in YYYY-MM-DD format (optional)'
+            ),
+            'photo': openapi.Schema(
+                type=openapi.TYPE_FILE,
+                description='Pet photo file upload - accepts image files (optional, can use photo or photoUrl)'
+            ),
+            'photoUrl': openapi.Schema(
+                type=openapi.TYPE_FILE,
+                description='Pet photo file upload - accepts image files (optional, can use photo or photoUrl)'
+            ),
+        },
+        required=['name', 'gender', 'species']
+    ),
+    consumes=['multipart/form-data'],
     responses={
         200: PetSerializer,
         400: 'Bad Request - Validation error',
@@ -1383,8 +1520,45 @@ def pets_list_create(request):
 )
 @swagger_auto_schema(
     method='patch',
-    operation_description='Partially update pet details',
-    request_body=PetSerializer,
+    operation_description='Partially update pet details. Accepts form data (multipart/form-data) with photo/photoUrl as file upload. All fields are optional.',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'name': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='Pet name (optional)'
+            ),
+            'gender': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                enum=['male', 'female'],
+                description='Pet gender (optional)'
+            ),
+            'species': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                enum=['dog', 'cat'],
+                description='Pet species (optional)'
+            ),
+            'breed': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='Pet breed (optional)'
+            ),
+            'dateOfBirth': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_DATE,
+                description='Date of birth in YYYY-MM-DD format (optional)'
+            ),
+            'photo': openapi.Schema(
+                type=openapi.TYPE_FILE,
+                description='Pet photo file upload - accepts image files (optional, can use photo or photoUrl)'
+            ),
+            'photoUrl': openapi.Schema(
+                type=openapi.TYPE_FILE,
+                description='Pet photo file upload - accepts image files (optional, can use photo or photoUrl)'
+            ),
+        },
+        required=[]
+    ),
+    consumes=['multipart/form-data'],
     responses={
         200: PetSerializer,
         400: 'Bad Request - Validation error',
@@ -2178,8 +2352,31 @@ def my_posts_list(request):
 
 @swagger_auto_schema(
     method='post',
-    operation_description='Create a new community post',
-    request_body=CreatePostSerializer,
+    operation_description='Create a new community post. Accepts form data (multipart/form-data) with images as file uploads.',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'content': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description='Post content/text (required)'
+            ),
+            'tags': openapi.Schema(
+                type=openapi.TYPE_ARRAY,
+                items=openapi.Schema(type=openapi.TYPE_STRING),
+                description='List of hashtags/tags (optional)'
+            ),
+            'isPublic': openapi.Schema(
+                type=openapi.TYPE_BOOLEAN,
+                description='Whether post is public (optional, default: true)'
+            ),
+            'images': openapi.Schema(
+                type=openapi.TYPE_FILE,
+                description='Image file upload - accepts image files. You can upload multiple images by using the same field name "images" multiple times (optional)'
+            ),
+        },
+        required=['content']
+    ),
+    consumes=['multipart/form-data'],
     responses={
         201: PostSerializer,
         400: 'Bad Request - Validation error',

@@ -104,7 +104,7 @@ class UpdateProfileSerializer(serializers.Serializer):
     name = serializers.CharField(required=False, allow_blank=True)
     number = serializers.CharField(required=False, allow_blank=True)
     location = serializers.CharField(required=False, allow_blank=True)
-    photoUrl = serializers.URLField(required=False, allow_blank=True)
+    photoUrl = serializers.FileField(required=False, allow_null=True)
 
 
 class ChangePasswordSerializer(serializers.Serializer):
