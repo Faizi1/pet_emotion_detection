@@ -80,6 +80,24 @@ def _likes_collection(post_id: str):
     return get_firestore().collection('community_posts').document(post_id).collection('likes')
 
 
+def _get_user_details(uid: str) -> Dict[str, Any]:
+    """Get user details (name, location, photoUrl) from Firestore"""
+    db = get_firestore()
+    user_doc = db.collection('users').document(uid).get()
+    if user_doc.exists:
+        user_data = user_doc.to_dict() or {}
+        return {
+            'name': user_data.get('name') or user_data.get('email') or 'Anonymous',
+            'location': user_data.get('location', ''),
+            'photoUrl': user_data.get('photoUrl', '')
+        }
+    return {
+        'name': 'Anonymous',
+        'location': '',
+        'photoUrl': ''
+    }
+
+
 def _shares_collection(post_id: str):
     return get_firestore().collection('community_posts').document(post_id).collection('shares')
 
@@ -2282,6 +2300,15 @@ def community_posts_list(request):
         post_data = doc.to_dict()
         post_data['id'] = doc.id
         
+        # Ensure author details are present (for backward compatibility)
+        if 'authorLocation' not in post_data:
+            author_details = _get_user_details(post_data.get('authorId', ''))
+            post_data['authorLocation'] = author_details['location']
+            post_data['authorPhotoUrl'] = author_details['photoUrl']
+        if 'authorPhotoUrl' not in post_data:
+            author_details = _get_user_details(post_data.get('authorId', ''))
+            post_data['authorPhotoUrl'] = author_details['photoUrl']
+        
         # Check if current user liked this post
         user_like = _likes_collection(doc.id).document(user.uid).get()
         post_data['isLikedByUser'] = user_like.exists
@@ -2338,6 +2365,16 @@ def my_posts_list(request):
     for doc in posts_docs:
         post_data = doc.to_dict()
         post_data['id'] = doc.id
+        
+        # Ensure author details are present (for backward compatibility)
+        if 'authorLocation' not in post_data:
+            author_details = _get_user_details(post_data.get('authorId', ''))
+            post_data['authorLocation'] = author_details['location']
+            post_data['authorPhotoUrl'] = author_details['photoUrl']
+        if 'authorPhotoUrl' not in post_data:
+            author_details = _get_user_details(post_data.get('authorId', ''))
+            post_data['authorPhotoUrl'] = author_details['photoUrl']
+        
         post_data['isLikedByUser'] = True  # User always likes their own posts conceptually
         
         # Get counts
@@ -2422,13 +2459,18 @@ def community_post_create(request):
                     'detail': f'Error uploading image: {str(e)}'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+    # Get user details
+    user_details = _get_user_details(user.uid)
+    
     post_data = {
         'content': ser.validated_data['content'],
         'images': images,
         'tags': ser.validated_data.get('tags', []),
         'isPublic': ser.validated_data.get('isPublic', True),
         'authorId': user.uid,
-        'authorName': user.name or user.email or 'Anonymous',
+        'authorName': user_details['name'],
+        'authorLocation': user_details['location'],
+        'authorPhotoUrl': user_details['photoUrl'],
         'createdAt': datetime.now(timezone.utc),
         'updatedAt': datetime.now(timezone.utc),
     }
@@ -2467,6 +2509,15 @@ def community_post_detail(request, post_id: str):
     
     post_data = post_doc.to_dict()
     post_data['id'] = post_doc.id
+    
+    # Ensure author details are present (for backward compatibility)
+    if 'authorLocation' not in post_data:
+        author_details = _get_user_details(post_data.get('authorId', ''))
+        post_data['authorLocation'] = author_details['location']
+        post_data['authorPhotoUrl'] = author_details['photoUrl']
+    if 'authorPhotoUrl' not in post_data:
+        author_details = _get_user_details(post_data.get('authorId', ''))
+        post_data['authorPhotoUrl'] = author_details['photoUrl']
     
     # Check if user liked this post
     user_like = _likes_collection(post_id).document(user.uid).get()
@@ -2509,6 +2560,49 @@ def community_post_delete(request, post_id: str):
 
 
 @swagger_auto_schema(
+    method='get',
+    operation_description='Get list of users who liked a post',
+    manual_parameters=[
+        openapi.Parameter(
+            'limit',
+            openapi.IN_QUERY,
+            description="Number of likes to return (default: 50, max: 100)",
+            type=openapi.TYPE_INTEGER,
+            required=False
+        ),
+        openapi.Parameter(
+            'offset',
+            openapi.IN_QUERY,
+            description="Number of likes to skip (for pagination)",
+            type=openapi.TYPE_INTEGER,
+            required=False
+        )
+    ],
+    responses={
+        200: openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'likes': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'userId': openapi.Schema(type=openapi.TYPE_STRING, description='User ID'),
+                            'userName': openapi.Schema(type=openapi.TYPE_STRING, description='User name'),
+                            'userLocation': openapi.Schema(type=openapi.TYPE_STRING, description='User location'),
+                            'userPhotoUrl': openapi.Schema(type=openapi.TYPE_STRING, description='User profile photo URL'),
+                            'likedAt': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_DATETIME, description='When the post was liked')
+                        }
+                    )
+                ),
+                'totalCount': openapi.Schema(type=openapi.TYPE_INTEGER, description='Total number of likes')
+            }
+        ),
+        404: 'Not Found - Post not found',
+        401: 'Unauthorized'
+    }
+)
+@swagger_auto_schema(
     method='post',
     operation_description='Like or unlike a post',
     request_body=LikeSerializer,
@@ -2524,7 +2618,7 @@ def community_post_delete(request, post_id: str):
         401: 'Unauthorized'
     }
 )
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
 def toggle_post_like(request, post_id: str):
     user: FirebaseUser = request.user  # type: ignore
     post_doc = _posts_collection().document(post_id).get()
@@ -2532,6 +2626,54 @@ def toggle_post_like(request, post_id: str):
     if not post_doc.exists:
         return Response({'detail': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
     
+    if request.method == 'GET':
+        # Get list of users who liked the post
+        limit = min(int(request.query_params.get('limit', 50)), 100)
+        offset = int(request.query_params.get('offset', 0))
+        
+        likes_query = _likes_collection(post_id).order_by('likedAt', direction='DESCENDING')
+        
+        try:
+            likes_docs = list(likes_query.offset(offset).limit(limit).stream())
+        except FailedPrecondition:
+            # Fallback without ordering if index is not available
+            all_likes = list(_likes_collection(post_id).stream())
+            # Sort manually by likedAt if available
+            def get_liked_at(doc):
+                liked_at = doc.to_dict().get('likedAt')
+                if liked_at is None:
+                    return datetime.min.replace(tzinfo=timezone.utc)
+                return liked_at if isinstance(liked_at, datetime) else datetime.min.replace(tzinfo=timezone.utc)
+            all_likes.sort(key=get_liked_at, reverse=True)
+            likes_docs = all_likes[offset:offset + limit]
+        
+        likes = []
+        for doc in likes_docs:
+            like_data = doc.to_dict() or {}
+            # The document ID is the user ID
+            like_data['userId'] = doc.id
+            
+            # Ensure user details are present (for backward compatibility)
+            if 'userLocation' not in like_data or 'userPhotoUrl' not in like_data or 'userName' not in like_data:
+                user_details = _get_user_details(doc.id)
+                if 'userLocation' not in like_data:
+                    like_data['userLocation'] = user_details['location']
+                if 'userPhotoUrl' not in like_data:
+                    like_data['userPhotoUrl'] = user_details['photoUrl']
+                if 'userName' not in like_data:
+                    like_data['userName'] = user_details['name']
+            
+            likes.append(like_data)
+        
+        # Get total count
+        total_count = len(list(_likes_collection(post_id).stream()))
+        
+        return Response({
+            'likes': likes,
+            'totalCount': total_count
+        })
+    
+    # POST method - toggle like/unlike
     like_ref = _likes_collection(post_id).document(user.uid)
     like_doc = like_ref.get()
     
@@ -2540,10 +2682,13 @@ def toggle_post_like(request, post_id: str):
         like_ref.delete()
         liked = False
     else:
-        # Like
+        # Like - get user details
+        user_details = _get_user_details(user.uid)
         like_ref.set({
             'userId': user.uid,
-            'userName': user.name or user.email or 'Anonymous',
+            'userName': user_details['name'],
+            'userLocation': user_details['location'],
+            'userPhotoUrl': user_details['photoUrl'],
             'likedAt': datetime.now(timezone.utc)
         })
         liked = True
@@ -2605,6 +2750,15 @@ def post_comments_list(request, post_id: str):
         comment_data = doc.to_dict()
         comment_data['id'] = doc.id
         
+        # Ensure author details are present (for backward compatibility)
+        if 'authorLocation' not in comment_data:
+            author_details = _get_user_details(comment_data.get('authorId', ''))
+            comment_data['authorLocation'] = author_details['location']
+            comment_data['authorPhotoUrl'] = author_details['photoUrl']
+        if 'authorPhotoUrl' not in comment_data:
+            author_details = _get_user_details(comment_data.get('authorId', ''))
+            comment_data['authorPhotoUrl'] = author_details['photoUrl']
+        
         # Check if user liked this comment
         comment_like_ref = get_firestore().collection('community_posts').document(post_id).collection('comments').document(doc.id).collection('likes').document(user.uid)
         comment_data['isLikedByUser'] = comment_like_ref.get().exists
@@ -2640,11 +2794,16 @@ def create_comment(request):
     if not post_doc.exists:
         return Response({'detail': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
     
+    # Get user details
+    user_details = _get_user_details(user.uid)
+    
     comment_data = {
         'postId': post_id,
         'content': ser.validated_data['content'],
         'authorId': user.uid,
-        'authorName': user.name or user.email or 'Anonymous',
+        'authorName': user_details['name'],
+        'authorLocation': user_details['location'],
+        'authorPhotoUrl': user_details['photoUrl'],
         'createdAt': datetime.now(timezone.utc),
         'updatedAt': datetime.now(timezone.utc),
     }

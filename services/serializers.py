@@ -154,6 +154,8 @@ class PostSerializer(serializers.Serializer):
     isPublic = serializers.BooleanField(default=True, help_text="Whether post is public")
     authorId = serializers.CharField(required=False)
     authorName = serializers.CharField(required=False)
+    authorLocation = serializers.CharField(required=False, allow_blank=True, help_text="Author location")
+    authorPhotoUrl = serializers.URLField(required=False, allow_blank=True, help_text="Author profile photo URL")
     createdAt = serializers.DateTimeField(required=False)
     updatedAt = serializers.DateTimeField(required=False)
     likesCount = serializers.IntegerField(required=False, default=0)
@@ -179,6 +181,8 @@ class CommentSerializer(serializers.Serializer):
     content = serializers.CharField(help_text="Comment content")
     authorId = serializers.CharField(required=False)
     authorName = serializers.CharField(required=False)
+    authorLocation = serializers.CharField(required=False, allow_blank=True, help_text="Author location")
+    authorPhotoUrl = serializers.URLField(required=False, allow_blank=True, help_text="Author profile photo URL")
     createdAt = serializers.DateTimeField(required=False)
     updatedAt = serializers.DateTimeField(required=False)
     likesCount = serializers.IntegerField(required=False, default=0)
@@ -192,6 +196,14 @@ class CreateCommentSerializer(serializers.Serializer):
 
 class LikeSerializer(serializers.Serializer):
     pass  # postId comes from URL path
+
+
+class PostLikeSerializer(serializers.Serializer):
+    userId = serializers.CharField(help_text="User ID who liked the post")
+    userName = serializers.CharField(help_text="User name who liked the post")
+    userLocation = serializers.CharField(required=False, allow_blank=True, help_text="User location")
+    userPhotoUrl = serializers.URLField(required=False, allow_blank=True, help_text="User profile photo URL")
+    likedAt = serializers.DateTimeField(help_text="When the post was liked")
 
 
 class ShareSerializer(serializers.Serializer):
