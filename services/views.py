@@ -106,6 +106,13 @@ def _support_messages_collection():
     return get_firestore().collection('support_messages')
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """Lightweight health endpoint for uptime pings and Render health checks. Returns 200 when the app is up."""
+    return Response({'status': 'ok'}, status=status.HTTP_200_OK)
+
+
 @swagger_auto_schema(
     method='post',
     operation_description='Verify a Firebase ID token',
@@ -1704,73 +1711,50 @@ def scans_create(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-    # Fast lightweight emotion detection (optimized for speed)
+    # Paid AI models emotion detection (Google Vision or Nyckel for images, AssemblyAI for audio)
     try:
         if media_type in ['image', 'photo']:
-            # Fast hash-based emotion detection (no heavy processing)
-            from .advanced_image_ai import advanced_image_ai
-            # Use lightweight mode for fast response
-            if advanced_image_ai.use_lightweight_mode:
-                # Ultra-fast hash-based detection
-                file_hash = hash(file_content) % 10000
-                emotions_list = ['happy', 'sad', 'anxious', 'excited', 'calm', 'playful', 'sleepy', 'curious']
-                emotion = emotions_list[file_hash % len(emotions_list)]
-                confidence = round(0.65 + (file_hash % 30) / 100.0, 2)
-                
-                # Generate top 3 emotions
-                top_emotions = [
-                    {'emotion': emotion, 'confidence': confidence},
-                    {'emotion': emotions_list[(file_hash + 1) % len(emotions_list)], 'confidence': round(0.15 + (file_hash % 15) / 100.0, 2)},
-                    {'emotion': emotions_list[(file_hash + 2) % len(emotions_list)], 'confidence': round(0.10 + (file_hash % 10) / 100.0, 2)}
-                ]
-                analysis_method = 'fast_hash_based'
-                ai_type = 'lightweight_fast'
+            # Choose image emotion service based on environment variable
+            from django.conf import settings
+            image_service = getattr(settings, 'IMAGE_EMOTION_SERVICE', 'google_vision').lower()
+            
+            if image_service == 'nyckel':
+                # Use Nyckel Dog Emotions Identifier
+                from .nyckel_service import nyckel_service
+                ai_result = nyckel_service.detect_emotion_from_image(file_content)
             else:
-                # Full AI processing (slower but more accurate)
-                ai_result = advanced_image_ai.detect_emotion_from_image(file_content)
-                emotion = ai_result['emotion']
-                confidence = ai_result['confidence']
-                analysis_method = ai_result.get('analysis_method', 'advanced_ai')
-                top_emotions = ai_result.get('top_emotions', [])
-                ai_type = ai_result.get('ai_detector_type', 'advanced_ai')
+                # Default: Use Google Cloud Vision API
+                from .google_vision_service import google_vision_service
+                ai_result = google_vision_service.detect_emotion_from_image(file_content)
+            
+            emotion = ai_result['emotion']
+            confidence = ai_result['confidence']
+            analysis_method = ai_result.get('analysis_method', image_service)
+            top_emotions = ai_result.get('top_emotions', [])
+            ai_type = ai_result.get('ai_detector_type', image_service)
+
         elif media_type in ['audio', 'sound', 'voice']:
-            # Fast hash-based emotion detection (no heavy processing)
-            from .advanced_audio_ai import advanced_audio_ai
-            # Use lightweight mode for fast response
-            if advanced_audio_ai.use_lightweight_mode:
-                # Ultra-fast hash-based detection
-                file_hash = hash(file_content) % 10000
-                emotions_list = ['happy', 'sad', 'anxious', 'excited', 'calm', 'playful', 'sleepy', 'curious']
-                emotion = emotions_list[file_hash % len(emotions_list)]
-                confidence = round(0.65 + (file_hash % 30) / 100.0, 2)
-                
-                # Generate top 3 emotions
-                top_emotions = [
-                    {'emotion': emotion, 'confidence': confidence},
-                    {'emotion': emotions_list[(file_hash + 1) % len(emotions_list)], 'confidence': round(0.15 + (file_hash % 15) / 100.0, 2)},
-                    {'emotion': emotions_list[(file_hash + 2) % len(emotions_list)], 'confidence': round(0.10 + (file_hash % 10) / 100.0, 2)}
-                ]
-                analysis_method = 'fast_hash_based'
-                ai_type = 'lightweight_fast'
-            else:
-                # Full AI processing (slower but more accurate)
-                ai_result = advanced_audio_ai.detect_emotion_from_audio(file_content)
-                emotion = ai_result['emotion']
-                confidence = ai_result['confidence']
-                analysis_method = ai_result.get('analysis_method', 'advanced_ai')
-                top_emotions = ai_result.get('top_emotions', [])
-                ai_type = ai_result.get('ai_detector_type', 'advanced_ai')
+            # Use AssemblyAI-based audio emotion detection with custom pet heuristics
+            from .assemblyai_service import assemblyai_service
+
+            ai_result = assemblyai_service.detect_emotion_from_audio(file_content)
+            emotion = ai_result['emotion']
+            confidence = ai_result['confidence']
+            analysis_method = ai_result.get('analysis_method', 'assemblyai')
+            top_emotions = ai_result.get('top_emotions', [])
+            ai_type = ai_result.get('ai_detector_type', 'assemblyai')
+
         else:
-            # For video or other types, use random for now
+            # For video or other types, keep a simple random baseline
             emotion = random.choice(['happy', 'sad', 'anxious', 'excited', 'calm'])
             confidence = round(random.uniform(0.6, 0.99), 2)
             analysis_method = 'random'
             top_emotions = []
             ai_type = 'none'
-            
+
     except Exception as e:
-        # Fallback to fast hash-based if anything fails
-        print(f"Emotion detection failed: {e}")
+        # Fallback to previous fast hash-based approach if anything fails
+        print(f"Emotion detection failed (paid models): {e}")
         file_hash = hash(file_content) % 10000
         emotions_list = ['happy', 'sad', 'anxious', 'excited', 'calm']
         emotion = emotions_list[file_hash % len(emotions_list)]
