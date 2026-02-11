@@ -42,12 +42,11 @@
 									"raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"number\": \"+15551234567\",\n  \"password\": \"secret123\",\n  \"confirmPassword\": \"secret123\"\n}"
 								},
 								"url": {
-									"raw": "{{baseUrl}}/api/auth/register",
+									"raw": "{{baseUrl}}/auth/register",
 									"host": [
 										"{{baseUrl}}"
 									],
 									"path": [
-										"api",
 										"auth",
 										"register"
 									]
@@ -70,12 +69,11 @@
                                     "raw": "{\n  \"phoneNumber\": \"{{phoneNumber}}\"\n}"
                                 },
                                 "url": {
-                                    "raw": "{{baseUrl}}/api/auth/resend-otp",
+                                    "raw": "{{baseUrl}}/auth/resend-otp",
                                     "host": [
                                         "{{baseUrl}}"
                                     ],
                                     "path": [
-                                        "api",
                                         "auth",
                                         "resend-otp"
                                     ]
@@ -110,17 +108,16 @@
 									"mode": "raw",
 									"raw": "{\n  \"phoneNumber\": \"{{phoneNumber}}\",\n  \"code\": \"123456\"\n}"
 								},
-								"url": {
-									"raw": "{{baseUrl}}/api/auth/verify-otp-and-register",
-									"host": [
-										"{{baseUrl}}"
-									],
-									"path": [
-										"api",
-										"auth",
-										"verify-otp-and-register"
-									]
-								}
+                                "url": {
+                                    "raw": "{{baseUrl}}/auth/verify-otp-and-register",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "auth",
+                                        "verify-otp-and-register"
+                                    ]
+                                }
 							},
 							"response": []
 						},
@@ -166,12 +163,11 @@
 									"raw": "{\n  \"idToken\": \"GOOGLE_ID_TOKEN_FROM_MOBILE_SDK\",\n  \"name\": \"John Doe\",\n  \"email\": \"john@gmail.com\",\n  \"phoneNumber\": \"+15551234567\"\n}"
 								},
 								"url": {
-									"raw": "{{baseUrl}}/api/auth/google-signin",
+									"raw": "{{baseUrl}}/auth/google-signin",
 									"host": [
 										"{{baseUrl}}"
 									],
 									"path": [
-										"api",
 										"auth",
 										"google-signin"
 									]
@@ -208,12 +204,11 @@
 									"raw": "{\n  \"identityToken\": \"APPLE_IDENTITY_TOKEN_FROM_MOBILE_SDK\",\n  \"authorizationCode\": \"APPLE_AUTH_CODE\",\n  \"name\": \"John Doe\",\n  \"email\": \"john@privaterelay.appleid.com\",\n  \"phoneNumber\": \"\"\n}"
 								},
 								"url": {
-									"raw": "{{baseUrl}}/api/auth/apple-signin",
+									"raw": "{{baseUrl}}/auth/apple-signin",
 									"host": [
 										"{{baseUrl}}"
 									],
 									"path": [
-										"api",
 										"auth",
 										"apple-signin"
 									]
@@ -241,12 +236,11 @@
 									"raw": "{\n  \"uid\": \"{{uid}}\"\n}"
 								},
 								"url": {
-									"raw": "{{baseUrl}}/api/auth/send-otp",
+									"raw": "{{baseUrl}}/auth/send-otp",
 									"host": [
 										"{{baseUrl}}"
 									],
 									"path": [
-										"api",
 										"auth",
 										"send-otp"
 									]
@@ -269,12 +263,11 @@
 									"raw": "{\n  \"uid\": \"{{uid}}\",\n  \"code\": \"123456\"\n}"
 								},
 								"url": {
-									"raw": "{{baseUrl}}/api/auth/verify-otp",
+									"raw": "{{baseUrl}}/auth/verify-otp",
 									"host": [
 										"{{baseUrl}}"
 									],
 									"path": [
-										"api",
 										"auth",
 										"verify-otp"
 									]
@@ -985,12 +978,11 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseUrl}}/api/history",
+							"raw": "{{baseUrl}}/history",
 							"host": [
 								"{{baseUrl}}"
 							],
 							"path": [
-								"api",
 								"history"
 							]
 						}
@@ -1008,18 +1000,50 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseUrl}}/api/history?petId={{petId}}",
+							"raw": "{{baseUrl}}/history?petId={{petId}}",
 							"host": [
 								"{{baseUrl}}"
 							],
 							"path": [
-								"api",
 								"history"
 							],
 							"query": [
 								{
 									"key": "petId",
 									"value": "{{petId}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Scan History Entry",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{idToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/history?id={{historyId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"history"
+							],
+							"query": [
+								{
+									"key": "id",
+									"value": "{{historyId}}"
+								},
+								{
+									"key": "petId",
+									"value": "{{petId}}",
+									"disabled": true
 								}
 							]
 						}
@@ -1899,6 +1923,11 @@
 		{
 			"key": "webApiKey",
 			"value": "YOUR_FIREBASE_WEB_API_KEY",
+			"type": "string"
+		},
+		{
+			"key": "historyId",
+			"value": "",
 			"type": "string"
 		}
 	]

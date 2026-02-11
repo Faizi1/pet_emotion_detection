@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'drf_yasg',
     'services',
+    'subscriptions',
 ]
 
 MIDDLEWARE = [
@@ -157,6 +158,17 @@ FIREBASE_PROJECT_ID = os.getenv('FIREBASE_PROJECT_ID', '')
 FIREBASE_STORAGE_BUCKET = os.getenv('FIREBASE_STORAGE_BUCKET', '')
 FIREBASE_CREDENTIALS_PATH = os.getenv('FIREBASE_CREDENTIALS_PATH', '')
 
+# Apple iOS IAP (App Store Server API)
+# These must be set in environment variables for receipt/transaction validation.
+APPLE_IAP_KEY_ID = os.getenv("APPLE_IAP_KEY_ID", "")
+APPLE_IAP_ISSUER_ID = os.getenv("APPLE_IAP_ISSUER_ID", "")
+APPLE_IAP_BUNDLE_ID = os.getenv("APPLE_IAP_BUNDLE_ID", "")
+# Either provide the private key content or a path to the .p8 file.
+APPLE_IAP_PRIVATE_KEY = os.getenv("APPLE_IAP_PRIVATE_KEY", "")
+APPLE_IAP_PRIVATE_KEY_PATH = os.getenv("APPLE_IAP_PRIVATE_KEY_PATH", "")
+# Use sandbox while testing with Sandbox/TestFlight
+APPLE_IAP_USE_SANDBOX = os.getenv("APPLE_IAP_USE_SANDBOX", "1") in ("1", "true", "True")
+
 # Twilio SMS Settings
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID', '')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', '')
@@ -173,6 +185,13 @@ VONAGE_API_KEY = os.getenv('VONAGE_API_KEY', '')
 VONAGE_API_SECRET = os.getenv('VONAGE_API_SECRET', '')
 VONAGE_SENDER_ID = os.getenv('VONAGE_SENDER_ID', 'PetMood')
 USE_VONAGE = os.getenv('USE_VONAGE', 'false').lower() == 'true'
+
+# Telnyx SMS Settings (Best for global coverage - 200+ countries)
+TELNYX_API_KEY = os.getenv('TELNYX_API_KEY', '')
+TELNYX_MESSAGING_PROFILE_ID = os.getenv('TELNYX_MESSAGING_PROFILE_ID', '')
+TELNYX_SENDER_ID = os.getenv('TELNYX_SENDER_ID', '')
+USE_TELNYX = os.getenv('USE_TELNYX', 'false').lower() == 'true'
+USE_ENHANCED_HYBRID = os.getenv('USE_ENHANCED_HYBRID', 'false').lower() == 'true'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

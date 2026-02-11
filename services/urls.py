@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from . import views
 
 
@@ -53,4 +53,7 @@ urlpatterns = [
     # (Removed admin support management endpoints added for new dashboard)
     
     # (Removed new dashboard/admin management and debug endpoints)
+
+    # iOS IAP (Subscriptions)
+    path("subscriptions/", include("subscriptions.urls")),
 ]

@@ -220,15 +220,16 @@ def register(request):
         'attempts': 0,  # Track OTP verification attempts
     })
     
-    # Send OTP via Twilio SMS
+    # Send OTP via SMS service
     sms_result = sms_service.send_otp(phone_number, code, 'registration')
     
     if sms_result['success']:
         return Response({
             'sent': True,
             'phoneNumber': phone_number,
-            # 'messageSid': sms_result.get('message_sid'),
-            'smsService': 'Vonage'
+            'messageSid': sms_result.get('message_id') or sms_result.get('message_sid'),
+            'smsService': sms_result.get('provider', 'unknown'),
+            'status': sms_result.get('status', 'sent')
         })
     else:
         # If SMS fails, still store OTP but inform about SMS failure
@@ -237,8 +238,8 @@ def register(request):
             'phoneNumber': phone_number,
             'smsSent': False,
             'smsError': sms_result.get('error'),
-            'smsService': 'twilio_failed',
-            'message': 'OTP generated but SMS delivery failed. Check your Twilio configuration.'
+            'smsService': 'service failed',
+            'message': 'OTP generated but SMS delivery failed. Check your configuration.'
         }, status=status.HTTP_201_CREATED)
 
 
@@ -305,7 +306,9 @@ def resend_registration_otp(request):
         return Response({
             'sent': True,
             'phoneNumber': phone_number,
-            'smsService': 'Vonage'
+            'smsService': sms_result.get('provider', 'unknown'),
+            'messageSid': sms_result.get('message_id') or sms_result.get('message_sid'),
+            'status': sms_result.get('status', 'sent')
         })
 
     return Response({
@@ -365,17 +368,18 @@ def send_otp(request):
         'otpAttempts': 0,  # Reset attempts counter
     }, merge=True)
     
-    # Send OTP via Twilio SMS
+    # Send OTP via SMS service
     sms_result = sms_service.send_otp(phone_number, code, 'login')
     
     response_data = {
         'sent': True,
         'smsSent': sms_result['success'],
-        'smsService': 'twilio'
+        'smsService': sms_result.get('provider', 'unknown'),
+        'status': sms_result.get('status', 'unknown')
     }
     
     if sms_result['success']:
-        response_data['messageSid'] = sms_result.get('message_sid')
+        response_data['messageSid'] = sms_result.get('message_id') or sms_result.get('message_sid')
     else:
         response_data['smsError'] = sms_result.get('error')
         response_data['message'] = 'OTP generated but SMS delivery failed'

@@ -1,6 +1,7 @@
 """
 SMS Service for OTP and notifications
-Currently using: Vonage (Twilio and Telgorithm are available but commented out)
+Supports: Telnyx (200+ countries), Vonage, Telgorithm, and Twilio
+Set USE_TELNYX=true in .env to enable Telnyx SMS (recommended for global coverage)
 Set USE_VONAGE=true in .env to enable Vonage SMS
 """
 
@@ -610,7 +611,328 @@ class VonageSMSService:
         }
 
 
-# Enhanced Hybrid SMS Service - Now supports Vonage, Telgorithm, and Twilio
+# Telnyx SMS Service Implementation
+class TelnyxSMSService:
+    """
+    Telnyx SMS service for sending OTP and notifications
+    Excellent global coverage (200+ countries) with competitive pricing
+    Supports high-volume messaging and real-time delivery receipts
+    """
+    
+    def __init__(self):
+        from django.conf import settings
+        self.api_key = getattr(settings, 'TELNYX_API_KEY', None)
+        self.messaging_profile_id = getattr(settings, 'TELNYX_MESSAGING_PROFILE_ID', None)
+        self.sender_id = getattr(settings, 'TELNYX_SENDER_ID', None)
+        self.api_url = 'https://api.telnyx.com/v2/messages'
+        self.is_configured = bool(self.api_key)
+        
+        if self.is_configured:
+            logger.info("Telnyx SMS service initialized successfully")
+        else:
+            logger.warning("Telnyx not configured. Set TELNYX_API_KEY")
+    
+    def format_phone_number(self, phone_number: str) -> str:
+        """Format phone number to E.164 format"""
+        cleaned = ''.join(char for char in phone_number if char.isdigit() or char == '+')
+        if not cleaned.startswith('+'):
+            if len(cleaned) == 10:
+                cleaned = '+1' + cleaned
+            else:
+                cleaned = '+' + cleaned
+        return cleaned
+    
+    def send_otp(self, phone_number: str, otp_code: str, message_type: str = "registration") -> Dict[str, any]:
+        """Send OTP code via Telnyx SMS"""
+        if not self.is_configured:
+            return {
+                'success': False,
+                'error': 'Telnyx not configured',
+                'message': 'SMS service not available'
+            }
+        
+        try:
+            import requests
+            
+            formatted_number = self.format_phone_number(phone_number)
+            
+            messages = {
+                'registration': f"Your Pet Mood verification code is: {otp_code}. Valid for 10 minutes.",
+                'login': f"Your Pet Mood login code is: {otp_code}. Valid for 10 minutes.",
+                'reset': f"Your Pet Mood password reset code is: {otp_code}. Valid for 10 minutes.",
+                'general': f"Your Pet Mood verification code is: {otp_code}. Valid for 10 minutes."
+            }
+            
+            message_body = messages.get(message_type, messages['general'])
+            
+            payload = {
+                'to': formatted_number,
+                'text': message_body
+            }
+            
+            if self.messaging_profile_id:
+                payload['messaging_profile_id'] = self.messaging_profile_id
+            elif self.sender_id:
+                payload['from'] = self.sender_id
+            else:
+                return {
+                    'success': False,
+                    'error': 'Telnyx sender ID or messaging profile ID not configured',
+                    'message': 'Set TELNYX_SENDER_ID or TELNYX_MESSAGING_PROFILE_ID'
+                }
+            
+            response = requests.post(
+                self.api_url,
+                headers={
+                    'Authorization': f'Bearer {self.api_key}',
+                    'Content-Type': 'application/json'
+                },
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('data'):
+                    message_data = data['data']
+                    logger.info(f"Telnyx SMS sent successfully to: {formatted_number}")
+                    return {
+                        'success': True,
+                        'message_id': message_data.get('id', 'unknown'),
+                        'to': formatted_number,
+                        'status': message_data.get('status', 'queued'),
+                        'error': None,
+                        'provider': 'telnyx',
+                        'direction': message_data.get('direction', 'outbound')
+                    }
+                else:
+                    logger.info(f"Telnyx SMS sent successfully to: {formatted_number}")
+                    return {
+                        'success': True,
+                        'message_id': data.get('id', 'unknown'),
+                        'to': formatted_number,
+                        'status': 'sent',
+                        'error': None,
+                        'provider': 'telnyx'
+                    }
+            else:
+                error_data = response.json() if response.content else {}
+                error_msg = f"Telnyx API error: {response.status_code}"
+                detailed_error = None
+                
+                if error_data.get('errors'):
+                    errors = error_data['errors']
+                    if isinstance(errors, list) and len(errors) > 0:
+                        first_error = errors[0]
+                        error_code = first_error.get('code', '')
+                        error_detail = first_error.get('detail', '')
+                        
+                        if error_code == '40305' or 'Invalid \'from\' address' in error_detail:
+                            detailed_error = (
+                                "Invalid 'from' address. For 10DLC campaigns, you must use "
+                                "TELNYX_MESSAGING_PROFILE_ID instead of TELNYX_SENDER_ID. "
+                                "Create a Messaging Profile and link it to your 10DLC campaign."
+                            )
+                        elif 'Number Pool is not enabled' in error_detail or 'unable to select a usable number' in error_detail:
+                            detailed_error = (
+                                "Number Pool issue: Your Messaging Profile doesn't have a number assigned. "
+                                "Go to 'Manage Numbers' → Edit your number → Select your Messaging Profile."
+                            )
+                        elif 'alphanumeric sender ID' in error_detail.lower() or 'alphanumeric sender' in error_detail.lower():
+                            if 'not registered' in error_detail.lower():
+                                detailed_error = (
+                                    "Alphanumeric sender ID needs to be registered for this country. "
+                                    "requires pre-registration. "
+                                    "Go to Compliance section → Register sender ID, or contact Telnyx support."
+                                )
+                            else:
+                                detailed_error = (
+                                    "Alphanumeric sender ID required for international SMS. "
+                                    "Go to Profile settings → Outbound tab → Enter an 'Alpha sender' name."
+                                )
+                        elif 'messaging profile' in error_detail.lower():
+                            detailed_error = (
+                                "Messaging Profile issue. Verify your TELNYX_MESSAGING_PROFILE_ID "
+                                "is correct and the profile is linked to your 10DLC campaign."
+                            )
+                        
+                        error_msg += f" - {error_detail}"
+                    else:
+                        error_msg += f" - {errors}"
+                else:
+                    error_msg += f" - {response.text}"
+                
+                logger.error(error_msg)
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'message': detailed_error or 'Failed to send SMS via Telnyx',
+                    'error_code': error_data.get('errors', [{}])[0].get('code') if error_data.get('errors') else None
+                }
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Telnyx SMS sending failed: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg,
+                'message': 'Failed to send SMS via Telnyx'
+            }
+    
+    def send_notification(self, phone_number: str, message: str) -> Dict[str, any]:
+        """Send custom notification message via Telnyx"""
+        if not self.is_configured:
+            return {
+                'success': False,
+                'error': 'Telnyx not configured',
+                'message': 'SMS service not available'
+            }
+        
+        try:
+            import requests
+            
+            formatted_number = self.format_phone_number(phone_number)
+            
+            payload = {
+                'to': formatted_number,
+                'text': message
+            }
+            
+            if self.messaging_profile_id:
+                payload['messaging_profile_id'] = self.messaging_profile_id
+            elif self.sender_id:
+                payload['from'] = self.sender_id
+            else:
+                return {
+                    'success': False,
+                    'error': 'Telnyx sender ID or messaging profile ID not configured',
+                    'message': 'Set TELNYX_SENDER_ID or TELNYX_MESSAGING_PROFILE_ID'
+                }
+            
+            response = requests.post(
+                self.api_url,
+                headers={
+                    'Authorization': f'Bearer {self.api_key}',
+                    'Content-Type': 'application/json'
+                },
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('data'):
+                    message_data = data['data']
+                    return {
+                        'success': True,
+                        'message_id': message_data.get('id', 'unknown'),
+                        'to': formatted_number,
+                        'status': message_data.get('status', 'queued'),
+                        'error': None,
+                        'provider': 'telnyx'
+                    }
+                else:
+                    return {
+                        'success': True,
+                        'message_id': data.get('id', 'unknown'),
+                        'to': formatted_number,
+                        'status': 'sent',
+                        'error': None,
+                        'provider': 'telnyx'
+                    }
+            else:
+                error_data = response.json() if response.content else {}
+                error_msg = f"Telnyx API error: {response.status_code}"
+                if error_data.get('errors'):
+                    errors = error_data['errors']
+                    if isinstance(errors, list) and len(errors) > 0:
+                        error_detail = errors[0].get('detail', '')
+                        error_msg += f" - {error_detail}"
+                else:
+                    error_msg += f" - {response.text}"
+                
+                logger.error(error_msg)
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'message': 'Failed to send notification via Telnyx'
+                }
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Telnyx notification sending failed: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg,
+                'message': 'Failed to send notification via Telnyx'
+            }
+    
+    def get_message_status(self, message_id: str) -> Dict[str, any]:
+        """Get status of a sent message via Telnyx API"""
+        if not self.is_configured:
+            return {
+                'success': False,
+                'error': 'Telnyx not configured'
+            }
+        
+        try:
+            import requests
+            
+            response = requests.get(
+                f"{self.api_url}/{message_id}",
+                headers={
+                    'Authorization': f'Bearer {self.api_key}',
+                    'Content-Type': 'application/json'
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('data'):
+                    message_data = data['data']
+                    return {
+                        'success': True,
+                        'message_id': message_data.get('id'),
+                        'status': message_data.get('status'),
+                        'to': message_data.get('to'),
+                        'from': message_data.get('from'),
+                        'body': message_data.get('text'),
+                        'direction': message_data.get('direction'),
+                        'created_at': message_data.get('created_at'),
+                        'updated_at': message_data.get('updated_at'),
+                        'delivery_status': message_data.get('delivery_status')
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': 'Message not found'
+                    }
+            else:
+                return {
+                    'success': False,
+                    'error': f"Telnyx API error: {response.status_code} - {response.text}"
+                }
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch Telnyx message status: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def get_service_status(self) -> Dict[str, any]:
+        """Get Telnyx service configuration status"""
+        return {
+            'configured': self.is_configured,
+            'api_key_set': bool(self.api_key),
+            'messaging_profile_id_set': bool(self.messaging_profile_id),
+            'sender_id': self.sender_id,
+            'api_url': self.api_url
+        }
+
+
+# Enhanced Hybrid SMS Service - Now supports Telnyx, Vonage, Telgorithm, and Twilio
 class EnhancedHybridSMSService:
     """
     Enhanced hybrid SMS service that supports Vonage, Telgorithm, and Twilio
@@ -619,26 +941,32 @@ class EnhancedHybridSMSService:
     
     def __init__(self):
         from django.conf import settings
+        self.use_telnyx = getattr(settings, 'USE_TELNYX', False)
         self.use_vonage = getattr(settings, 'USE_VONAGE', False)
         self.use_telgorithm = getattr(settings, 'USE_TELGORITHM', False)
         
         # Initialize all services
+        self.telnyx = TelnyxSMSService()
         self.vonage = VonageSMSService()
         self.telgorithm = TelgorithmSMSService()
         self.twilio = TwilioSMSService()
         
-        # Determine priority order
-        if self.use_vonage and self.vonage.is_configured:
+        # Determine priority order (Telnyx recommended for best global coverage)
+        if self.use_telnyx and self.telnyx.is_configured:
+            self.primary_service = self.telnyx
+            self.fallback_services = [self.vonage, self.telgorithm, self.twilio]
+            logger.info("Enhanced Hybrid SMS service - Primary: Telnyx (200+ countries)")
+        elif self.use_vonage and self.vonage.is_configured:
             self.primary_service = self.vonage
-            self.fallback_services = [self.telgorithm, self.twilio]
+            self.fallback_services = [self.telnyx, self.telgorithm, self.twilio]
             logger.info("Enhanced Hybrid SMS service - Primary: Vonage")
         elif self.use_telgorithm and self.telgorithm.is_configured:
             self.primary_service = self.telgorithm
-            self.fallback_services = [self.vonage, self.twilio]
+            self.fallback_services = [self.telnyx, self.vonage, self.twilio]
             logger.info("Enhanced Hybrid SMS service - Primary: Telgorithm")
         elif self.twilio.is_configured:
             self.primary_service = self.twilio
-            self.fallback_services = [self.vonage, self.telgorithm]
+            self.fallback_services = [self.telnyx, self.vonage, self.telgorithm]
             logger.info("Enhanced Hybrid SMS service - Primary: Twilio")
         else:
             # No service configured
@@ -706,25 +1034,33 @@ class EnhancedHybridSMSService:
         return {
             'primary_service': self.primary_service.__class__.__name__ if self.primary_service else 'None',
             'fallback_services': [svc.__class__.__name__ for svc in self.fallback_services if svc and svc.is_configured],
+            'telnyx_status': self.telnyx.get_service_status(),
             'vonage_status': self.vonage.get_service_status(),
             'telgorithm_status': self.telgorithm.get_service_status(),
             'twilio_status': self.twilio.get_service_status()
         }
 
 
-# Global instance - Vonage Only (Telgorithm and Twilio commented out)
+# Global instance - Supports Telnyx, Vonage, Telgorithm, and Twilio
+# Priority: Telnyx > Vonage > Telgorithm > Twilio
+# Set USE_TELNYX=true for best global coverage (200+ countries)
 # Set USE_VONAGE=true to use Vonage as primary
+# Or use EnhancedHybridSMSService for automatic fallback
 
-# Option 1: Use Vonage only (uncomment to use)
 from django.conf import settings
+USE_TELNYX = getattr(settings, 'USE_TELNYX', False)
 USE_VONAGE = getattr(settings, 'USE_VONAGE', False)
+USE_ENHANCED_HYBRID = getattr(settings, 'USE_ENHANCED_HYBRID', False)
 
-if USE_VONAGE:
+if USE_ENHANCED_HYBRID:
+    # Use enhanced hybrid service with automatic fallback
+    sms_service = EnhancedHybridSMSService()
+elif USE_TELNYX:
+    # Use Telnyx (recommended for global coverage)
+    sms_service = TelnyxSMSService()
+elif USE_VONAGE:
+    # Use Vonage
     sms_service = VonageSMSService()
 else:
-    # Fallback to Twilio if Vonage not configured
-    # sms_service = TwilioSMSService()  # Commented out
-    # sms_service = TelgorithmSMSService()  # Commented out
-    # sms_service = VonageSMSService()  # Commented out
-    # Use simple Vonage-only service
+    # Default: Use Vonage (or change to your preferred default)
     sms_service = VonageSMSService()
