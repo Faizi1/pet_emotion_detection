@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
 from services.admin import custom_admin_site
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
@@ -36,7 +37,12 @@ schema_view = get_schema_view(
     permission_classes=(permissions.AllowAny,),
 )
 
+def root_health(request):
+    """Root path for Render/default health checks; prefer /api/health for keep-alive."""
+    return JsonResponse({'status': 'ok', 'docs': '/swagger/'})
+
 urlpatterns = [
+    path('', root_health),
     path('admin/', admin.site.urls),
     path('admin-panel/', custom_admin_site.urls),
     path('api/', include('services.urls')),

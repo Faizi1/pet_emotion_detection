@@ -49,6 +49,7 @@ A workflow is already in the repo: `.github/workflows/keep-alive.yml`.
 
 1. Edit that file and set the `RENDER_APP_URL` env (or replace `YOUR-RENDER-URL` in the `curl` command) to your real Render URL, e.g. `https://pet-emotion-api.onrender.com`.
 2. Commit and push. GitHub will run the job every 10 minutes and GET your `/api/health` endpoint, so the free-tier instance stays awake.
+3. **Important:** Scheduled runs only happen on the **default branch** (e.g. `main`). To test immediately, go to GitHub → **Actions** → **Keep Render alive** → **Run workflow**.
 
 ---
 
@@ -80,3 +81,12 @@ If you need the app to **run 24/7 with no spin-down**:
 | No spin-down at all              | Upgrade to a paid Render plan (Option 3).                                 |
 
 **Recommended:** Use **Option 1** (e.g. UptimeRobot at 5-minute interval) and **Option 2** (health check path). That keeps the free tier instance awake and gives you basic monitoring and healthier deploys.
+
+---
+
+## Troubleshooting: "Health API not hit" in Render logs
+
+- **Requests to `/` returning 404:** The app now responds to **`/`** with `200` so Render’s default health check passes. For keep-alive, still use **`/api/health`**.
+- **Set Render Health Check path:** In Render Dashboard → your service → **Settings** → **Health Check Path** → set to **`/api/health`** (or leave default **`/`**; both work now).
+- **GitHub Actions not pinging:** Ensure the workflow file is on your **default branch** (e.g. `main`). Run it once manually: **Actions** → **Keep Render alive** → **Run workflow**, then check Render logs for a `GET /api/health` request.
+- **Quick test:** Open `https://pet-emotion-detection.onrender.com/api/health` in a browser; you should see `{"status":"ok"}`.

@@ -14,4 +14,6 @@ jobs:
     steps:
       - name: Ping health endpoint
         run: |
-          curl -sf -o /dev/null "${RENDER_APP_URL}/api/health" || true
+          URL="${RENDER_APP_URL}/api/health"
+          echo "Pinging $URL"
+          curl -sf -w "\nHTTP %{http_code}\n" -o /dev/null "$URL" || true
