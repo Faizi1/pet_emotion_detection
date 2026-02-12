@@ -106,7 +106,7 @@ def _support_messages_collection():
     return get_firestore().collection('support_messages')
 
 
-@api_view(['GET'])
+@api_view(['GET', 'HEAD'])
 @permission_classes([AllowAny])
 def health_check(request):
     """Lightweight health endpoint for uptime pings and Render health checks. Returns 200 when the app is up."""
