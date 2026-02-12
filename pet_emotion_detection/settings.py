@@ -193,6 +193,18 @@ TELNYX_SENDER_ID = os.getenv('TELNYX_SENDER_ID', '')
 USE_TELNYX = os.getenv('USE_TELNYX', 'false').lower() == 'true'
 USE_ENHANCED_HYBRID = os.getenv('USE_ENHANCED_HYBRID', 'false').lower() == 'true'
 
+# Image Emotion Detection Settings
+# Choose which service to use: 'google_vision' or 'nyckel'
+IMAGE_EMOTION_SERVICE = os.getenv('IMAGE_EMOTION_SERVICE', 'google_vision').lower()
+
+# Google Cloud Vision API
+GOOGLE_APPLICATION_CREDENTIALS = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', '')
+
+# Nyckel API (Dog Emotions Identifier)
+NYCKEL_BEARER_TOKEN = os.getenv('NYCKEL_BEARER_TOKEN', '')
+NYCKEL_CLIENT_ID = os.getenv('NYCKEL_CLIENT_ID', '')
+NYCKEL_CLIENT_SECRET = os.getenv('NYCKEL_CLIENT_SECRET', '')
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
