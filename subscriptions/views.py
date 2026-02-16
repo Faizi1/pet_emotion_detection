@@ -226,3 +226,29 @@ def restore_purchases(request):
     )
 
 
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def list_plans(request):
+    """
+    GET /api/subscriptions/plans
+
+    Returns the list of available subscription plans derived from PRODUCT_MAPPING.
+    This is intended for the client app's pricing/subscription screen.
+    """
+    data = []
+    for product_id, (plan_type, period) in PRODUCT_MAPPING.items():
+        name = f"{plan_type.capitalize()} {period.capitalize()}"
+        data.append(
+            {
+                "product_id": product_id,
+                "name": name,
+                "plan_type": plan_type,
+                "period": period,
+                "platform": "apple",
+                "price_display": "",
+            }
+        )
+    return Response({"plans": data})
+
+
+
