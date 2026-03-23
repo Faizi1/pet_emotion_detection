@@ -61,5 +61,4 @@ librosa>=0.11.0
 soundfile>=0.13.0
 standard-aifc>=3.13.0
 
-google-cloud-vision==3.12.1
 assemblyai==0.51.0

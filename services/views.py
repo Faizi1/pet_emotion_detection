@@ -105,6 +105,172 @@ def _shares_collection(post_id: str):
 def _support_messages_collection():
     return get_firestore().collection('support_messages')
 
+def _blocks_collection(uid: str):
+    return get_firestore().collection('users').document(uid).collection('blocks')
+
+
+def _content_reports_collection():
+    return get_firestore().collection('content_reports')
+
+
+_OBJECTIONABLE_KEYWORDS = {
+    # Minimal baseline filter; expand as needed.
+    "porn", "nude", "nudity", "sex", "rape",
+    "kill", "murder", "suicide",
+    "terrorist", "bomb",
+    "hate", "racist", "nazi",
+}
+
+
+def _contains_objectionable_text(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(keyword in lowered for keyword in _OBJECTIONABLE_KEYWORDS)
+
+
+def _get_blocked_user_ids(uid: str) -> set:
+    try:
+        docs = list(_blocks_collection(uid).stream())
+    except Exception:
+        return set()
+    return {doc.id for doc in docs}
+
+
+def _delete_reported_content(report_data: Dict[str, Any]) -> Dict[str, bool]:
+    """
+    Delete post/comment referenced by a moderation report.
+    Returns what was actually removed.
+    """
+    removed = {"postRemoved": False, "commentRemoved": False}
+    report_type = report_data.get("type")
+    post_id = report_data.get("postId")
+    comment_id = report_data.get("commentId")
+
+    if report_type == "post" and post_id:
+        post_ref = _posts_collection().document(post_id)
+        if post_ref.get().exists:
+            post_ref.delete()
+            removed["postRemoved"] = True
+
+    if report_type == "comment" and post_id and comment_id:
+        comment_ref = _comments_collection(post_id).document(comment_id)
+        if comment_ref.get().exists:
+            comment_ref.delete()
+            removed["commentRemoved"] = True
+
+    return removed
+
+
+def _ai_disclosure_for_provider(provider: str) -> Dict[str, Any]:
+    """
+    Disclosure payload used by the client before requesting consent.
+    Keep this in sync with the actual services used in scans_create().
+    """
+    disclosures: Dict[str, Dict[str, Any]] = {
+        "nyckel": {
+            "providerName": "Nyckel",
+            "dataSent": ["image_bytes"],
+            "purpose": "Pet emotion detection from user-submitted images",
+        },
+        "assemblyai": {
+            "providerName": "AssemblyAI",
+            "dataSent": ["audio_bytes"],
+            "purpose": "Pet emotion detection from user-submitted audio",
+        },
+    }
+    return disclosures.get(
+        provider,
+        {
+            "providerName": provider,
+            "dataSent": [],
+            "purpose": "Pet emotion detection",
+        },
+    )
+
+
+def _get_ai_consent(uid: str) -> Dict[str, Any]:
+    db = get_firestore()
+    doc = db.collection("users").document(uid).get()
+    if not doc.exists:
+        return {}
+    data = doc.to_dict() or {}
+    consent = data.get("aiConsent") or {}
+    if isinstance(consent, dict):
+        return consent
+    return {}
+
+
+@swagger_auto_schema(
+    method='get',
+    operation_description=(
+        "Get AI third-party data sharing disclosure + current user's consent status. "
+        "The client should call this before initiating any AI scan that sends media to a third-party AI provider."
+    ),
+    responses={200: openapi.Schema(type=openapi.TYPE_OBJECT)}
+)
+@swagger_auto_schema(
+    method='post',
+    operation_description=(
+        "Set (grant or revoke) user's consent for sending personal data (uploaded media) "
+        "to third-party AI providers used for pet emotion detection."
+    ),
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            "granted": openapi.Schema(type=openapi.TYPE_BOOLEAN, description="Whether consent is granted"),
+            "providers": openapi.Schema(
+                type=openapi.TYPE_ARRAY,
+                items=openapi.Schema(type=openapi.TYPE_STRING),
+                description="List of AI providers the user consents to (e.g. nyckel, assemblyai)"
+            ),
+        },
+        required=["granted"]
+    ),
+    responses={200: openapi.Schema(type=openapi.TYPE_OBJECT)}
+)
+@api_view(['GET', 'POST'])
+def ai_consent(request):
+    user: FirebaseUser = request.user  # type: ignore
+    db = get_firestore()
+
+    if request.method == "GET":
+        consent = _get_ai_consent(user.uid)
+        return Response(
+            {
+                "consent": {
+                    "granted": bool(consent.get("granted", False)),
+                    "providers": consent.get("providers", []),
+                    "grantedAt": consent.get("grantedAt"),
+                    "revokedAt": consent.get("revokedAt"),
+                },
+                "disclosure": {
+                    "nyckel": _ai_disclosure_for_provider("nyckel"),
+                    "assemblyai": _ai_disclosure_for_provider("assemblyai"),
+                },
+            }
+        )
+
+    granted = bool(request.data.get("granted", False))
+    providers = request.data.get("providers", [])
+    if providers is None:
+        providers = []
+    if not isinstance(providers, list):
+        return Response({"detail": "providers must be a list"}, status=status.HTTP_400_BAD_REQUEST)
+
+    update: Dict[str, Any] = {
+        "aiConsent": {
+            "granted": granted,
+            "providers": providers,
+        }
+    }
+    if granted:
+        update["aiConsent"]["grantedAt"] = datetime.now(timezone.utc)
+        update["aiConsent"]["revokedAt"] = None
+    else:
+        update["aiConsent"]["revokedAt"] = datetime.now(timezone.utc)
+
+    db.collection("users").document(user.uid).set(update, merge=True)
+    return Response({"success": True, "consent": update["aiConsent"]})
+
 
 @api_view(['GET', 'HEAD'])
 @permission_classes([AllowAny])
@@ -1711,31 +1877,47 @@ def scans_create(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-    # Paid AI models emotion detection (Google Vision or Nyckel for images, AssemblyAI for audio)
+    # Paid AI models emotion detection (Nyckel for images, AssemblyAI for audio)
     try:
         if media_type in ['image', 'photo']:
-            # Choose image emotion service based on environment variable
-            from django.conf import settings
-            image_service = getattr(settings, 'IMAGE_EMOTION_SERVICE', 'google_vision').lower()
+            # Nyckel-only for image emotion detection
+            provider = 'nyckel'
+
+            consent = _get_ai_consent(user.uid)
+            if not consent.get("granted", False) or provider not in (consent.get("providers") or []):
+                return Response(
+                    {
+                        "detail": "User consent required before sending media to third-party AI provider.",
+                        "requiredProvider": provider,
+                        "disclosure": _ai_disclosure_for_provider(provider),
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             
-            if image_service == 'nyckel':
-                # Use Nyckel Dog Emotions Identifier
-                from .nyckel_service import nyckel_service
-                ai_result = nyckel_service.detect_emotion_from_image(file_content)
-            else:
-                # Default: Use Google Cloud Vision API
-                from .google_vision_service import google_vision_service
-                ai_result = google_vision_service.detect_emotion_from_image(file_content)
+            # Use Nyckel Dog Emotions Identifier
+            from .nyckel_service import nyckel_service
+            ai_result = nyckel_service.detect_emotion_from_image(file_content)
             
             emotion = ai_result['emotion']
             confidence = ai_result['confidence']
-            analysis_method = ai_result.get('analysis_method', image_service)
+            analysis_method = ai_result.get('analysis_method', 'nyckel')
             top_emotions = ai_result.get('top_emotions', [])
-            ai_type = ai_result.get('ai_detector_type', image_service)
+            ai_type = ai_result.get('ai_detector_type', 'nyckel')
 
         elif media_type in ['audio', 'sound', 'voice']:
             # Use AssemblyAI-based audio emotion detection with custom pet heuristics
             from .assemblyai_service import assemblyai_service
+            provider = "assemblyai"
+            consent = _get_ai_consent(user.uid)
+            if not consent.get("granted", False) or provider not in (consent.get("providers") or []):
+                return Response(
+                    {
+                        "detail": "User consent required before sending media to third-party AI provider.",
+                        "requiredProvider": provider,
+                        "disclosure": _ai_disclosure_for_provider(provider),
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
             ai_result = assemblyai_service.detect_emotion_from_audio(file_content)
             emotion = ai_result['emotion']
@@ -2238,6 +2420,7 @@ def community_posts_list(request):
     offset = int(request.query_params.get('offset', 0))
     
     db = get_firestore()
+    blocked_user_ids = _get_blocked_user_ids(user.uid)
     
     # Get user's own posts ordered by creation time (newest first)
     user_posts_query = _posts_collection().where('authorId', '==', user.uid).where('isPublic', '==', True).order_by('createdAt', direction='DESCENDING')
@@ -2287,6 +2470,10 @@ def community_posts_list(request):
     for doc in paginated_posts:
         post_data = doc.to_dict()
         post_data['id'] = doc.id
+
+        # Hide content from blocked users
+        if post_data.get("authorId") in blocked_user_ids:
+            continue
         
         # Ensure author details are present (for backward compatibility)
         if 'authorLocation' not in post_data:
@@ -2413,6 +2600,12 @@ def community_post_create(request):
     user: FirebaseUser = request.user  # type: ignore
     ser = CreatePostSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
+
+    if _contains_objectionable_text(ser.validated_data.get("content", "")):
+        return Response(
+            {"detail": "Post content violates community guidelines."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     
     # Handle image uploads if any
     images = []
@@ -2497,6 +2690,10 @@ def community_post_detail(request, post_id: str):
     
     post_data = post_doc.to_dict()
     post_data['id'] = post_doc.id
+
+    blocked_user_ids = _get_blocked_user_ids(user.uid)
+    if post_data.get("authorId") in blocked_user_ids:
+        return Response({'detail': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
     
     # Ensure author details are present (for backward compatibility)
     if 'authorLocation' not in post_data:
@@ -2734,9 +2931,14 @@ def post_comments_list(request, post_id: str):
         comments_docs = list(_comments_collection(post_id).offset(offset).limit(limit).stream())
     
     comments = []
+    blocked_user_ids = _get_blocked_user_ids(user.uid)
     for doc in comments_docs:
         comment_data = doc.to_dict()
         comment_data['id'] = doc.id
+
+        # Hide comments from blocked users
+        if comment_data.get("authorId") in blocked_user_ids:
+            continue
         
         # Ensure author details are present (for backward compatibility)
         if 'authorLocation' not in comment_data:
@@ -2775,6 +2977,12 @@ def create_comment(request):
     user: FirebaseUser = request.user  # type: ignore
     ser = CreateCommentSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
+
+    if _contains_objectionable_text(ser.validated_data.get("content", "")):
+        return Response(
+            {"detail": "Comment content violates community guidelines."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     
     post_id = ser.validated_data['postId']
     post_doc = _posts_collection().document(post_id).get()
@@ -2807,6 +3015,236 @@ def create_comment(request):
     created_comment['isLikedByUser'] = False
     
     return Response(created_comment, status=status.HTTP_201_CREATED)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description='Report a community post as objectionable content',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'reason': openapi.Schema(type=openapi.TYPE_STRING, description='Reason for reporting'),
+        }
+    ),
+    responses={200: openapi.Schema(type=openapi.TYPE_OBJECT)}
+)
+@api_view(['POST'])
+def report_post(request, post_id: str):
+    user: FirebaseUser = request.user  # type: ignore
+    post_doc = _posts_collection().document(post_id).get()
+    if not post_doc.exists:
+        return Response({'detail': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    post_data = post_doc.to_dict() or {}
+    report = {
+        "type": "post",
+        "postId": post_id,
+        "commentId": None,
+        "reportedBy": user.uid,
+        "contentAuthorId": post_data.get("authorId"),
+        "reason": request.data.get("reason", ""),
+        "status": "new",
+        "createdAt": datetime.now(timezone.utc),
+    }
+    ref = _content_reports_collection().document()
+    ref.set(report)
+    return Response({"reported": True, "reportId": ref.id})
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description='Report a comment as objectionable content',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'reason': openapi.Schema(type=openapi.TYPE_STRING, description='Reason for reporting'),
+        }
+    ),
+    responses={200: openapi.Schema(type=openapi.TYPE_OBJECT)}
+)
+@api_view(['POST'])
+def report_comment(request, post_id: str, comment_id: str):
+    user: FirebaseUser = request.user  # type: ignore
+    comment_doc = _comments_collection(post_id).document(comment_id).get()
+    if not comment_doc.exists:
+        return Response({'detail': 'Comment not found'}, status=status.HTTP_404_NOT_FOUND)
+    comment_data = comment_doc.to_dict() or {}
+
+    report = {
+        "type": "comment",
+        "postId": post_id,
+        "commentId": comment_id,
+        "reportedBy": user.uid,
+        "contentAuthorId": comment_data.get("authorId"),
+        "reason": request.data.get("reason", ""),
+        "status": "new",
+        "createdAt": datetime.now(timezone.utc),
+    }
+    ref = _content_reports_collection().document()
+    ref.set(report)
+    return Response({"reported": True, "reportId": ref.id})
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description=(
+        "Block a user. Blocking removes their content from the caller's feed instantly "
+        "and creates a moderation record for the developer."
+    ),
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'reason': openapi.Schema(type=openapi.TYPE_STRING, description='Optional reason for blocking'),
+        }
+    ),
+    responses={200: openapi.Schema(type=openapi.TYPE_OBJECT)}
+)
+@api_view(['POST'])
+def block_user(request, target_uid: str):
+    user: FirebaseUser = request.user  # type: ignore
+    if target_uid == user.uid:
+        return Response({"detail": "You cannot block yourself."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Create block record (document ID = blocked user's UID for fast lookups)
+    _blocks_collection(user.uid).document(target_uid).set(
+        {
+            "blockedAt": datetime.now(timezone.utc),
+            "reason": request.data.get("reason", ""),
+        }
+    )
+
+    # Create a moderation record for developer visibility
+    report = {
+        "type": "block_user",
+        "postId": None,
+        "commentId": None,
+        "reportedBy": user.uid,
+        "contentAuthorId": target_uid,
+        "reason": request.data.get("reason", ""),
+        "status": "new",
+        "createdAt": datetime.now(timezone.utc),
+    }
+    ref = _content_reports_collection().document()
+    ref.set(report)
+
+    return Response({"blocked": True, "targetUid": target_uid, "reportId": ref.id})
+
+
+@swagger_auto_schema(
+    method='get',
+    operation_description='Admin: list moderation reports (developer must action within 24 hours)',
+    manual_parameters=[
+        openapi.Parameter('status', openapi.IN_QUERY, type=openapi.TYPE_STRING, required=False, description='Filter by status (default: new)'),
+        openapi.Parameter('limit', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, required=False, description='Max items (default: 50, max: 200)'),
+    ],
+    responses={200: openapi.Schema(type=openapi.TYPE_OBJECT)}
+)
+@api_view(['GET'])
+@permission_classes([IsAdminFirebase])
+def admin_list_reports(request):
+    status_filter = request.query_params.get("status", "new")
+    limit = min(int(request.query_params.get("limit", 50)), 200)
+
+    query = _content_reports_collection().where("status", "==", status_filter)
+    try:
+        docs = list(query.limit(limit).stream())
+    except Exception:
+        docs = list(_content_reports_collection().limit(limit).stream())
+
+    reports = []
+    for doc in docs:
+        data = doc.to_dict() or {}
+        data["id"] = doc.id
+        reports.append(data)
+    return Response({"reports": reports, "count": len(reports)})
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description=(
+        "Admin: take moderation action on a report. "
+        "Supported actions: mark_reviewed, dismiss, remove_content, suspend_user, remove_content_and_suspend_user."
+    ),
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            "action": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                description=(
+                    "Moderation action: mark_reviewed | dismiss | remove_content | "
+                    "suspend_user | remove_content_and_suspend_user"
+                ),
+            ),
+            "adminNote": openapi.Schema(type=openapi.TYPE_STRING, description="Optional admin note"),
+            "suspendReason": openapi.Schema(type=openapi.TYPE_STRING, description="Reason when suspending user"),
+            "suspendedUntil": openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_DATETIME,
+                description="Optional suspension end time (ISO-8601). If omitted, suspension is indefinite.",
+            ),
+        },
+        required=["action"],
+    ),
+    responses={200: openapi.Schema(type=openapi.TYPE_OBJECT)},
+)
+@api_view(['POST'])
+@permission_classes([IsAdminFirebase])
+def admin_moderation_action(request, report_id: str):
+    report_ref = _content_reports_collection().document(report_id)
+    snap = report_ref.get()
+    if not snap.exists:
+        return Response({"detail": "Report not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    report_data = snap.to_dict() or {}
+    action = (request.data.get("action") or "").strip()
+    admin_note = request.data.get("adminNote", "")
+    suspend_reason = request.data.get("suspendReason", "")
+    suspended_until = request.data.get("suspendedUntil")
+    now = datetime.now(timezone.utc)
+
+    valid_actions = {
+        "mark_reviewed",
+        "dismiss",
+        "remove_content",
+        "suspend_user",
+        "remove_content_and_suspend_user",
+    }
+    if action not in valid_actions:
+        return Response(
+            {"detail": f"Invalid action. Allowed: {', '.join(sorted(valid_actions))}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    update_payload: Dict[str, Any] = {
+        "status": "resolved" if action != "dismiss" else "dismissed",
+        "actionTaken": action,
+        "adminNote": admin_note,
+        "reviewedAt": now,
+    }
+
+    result: Dict[str, Any] = {"reportId": report_id, "action": action}
+
+    if action in {"remove_content", "remove_content_and_suspend_user"}:
+        result.update(_delete_reported_content(report_data))
+
+    if action in {"suspend_user", "remove_content_and_suspend_user"}:
+        target_uid = report_data.get("contentAuthorId")
+        if target_uid:
+            suspension_data = {
+                "isSuspended": True,
+                "suspendedReason": suspend_reason or "Policy violation",
+                "suspendedAt": now,
+                "suspendedUntil": suspended_until,
+            }
+            get_firestore().collection("users").document(target_uid).set(suspension_data, merge=True)
+            result["userSuspended"] = True
+            result["suspendedUserId"] = target_uid
+        else:
+            result["userSuspended"] = False
+
+    report_ref.set(update_payload, merge=True)
+    result["reportStatus"] = update_payload["status"]
+    return Response(result)
 
 
 @swagger_auto_schema(

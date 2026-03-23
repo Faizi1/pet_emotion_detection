@@ -10,6 +10,70 @@ Most endpoints require a **Firebase-authenticated user** (via `Authorization: Be
 
 ---
 
+### Privacy / AI Consent (Required before AI scans)
+
+Apple review requires the app to **disclose what data is sent**, **who it is sent to**, and to **obtain the user’s permission** before sending user media to a third-party AI provider.
+
+This backend enforces that:
+- The client must obtain consent first.
+- If consent is missing, the scan endpoint returns **403** with the required provider + disclosure.
+
+#### Get disclosure + current consent status
+
+**Endpoint**
+- **GET** `/api/services/privacy/ai-consent`
+
+**Auth**
+- Requires Firebase-authenticated user.
+
+**Sample Response**
+
+```json
+{
+  "consent": {
+    "granted": false,
+    "providers": [],
+    "grantedAt": null,
+    "revokedAt": null
+  },
+  "disclosure": {
+    "nyckel": {
+      "providerName": "Nyckel",
+      "dataSent": ["image_bytes"],
+      "purpose": "Pet emotion detection from user-submitted images"
+    },
+    "assemblyai": {
+      "providerName": "AssemblyAI",
+      "dataSent": ["audio_bytes"],
+      "purpose": "Pet emotion detection from user-submitted audio"
+    }
+  }
+}
+```
+
+#### Grant / revoke consent
+
+**Endpoint**
+- **POST** `/api/services/privacy/ai-consent`
+
+**Auth**
+- Requires Firebase-authenticated user.
+
+**Request Body**
+
+```json
+{
+  "granted": true,
+  "providers": ["nyckel", "assemblyai"]
+}
+```
+
+**Notes**
+- If the app uses Nyckel for image scans, include `"nyckel"` in `providers`.
+- The backend stores consent on the user document in Firestore under `aiConsent`.
+
+---
+
 ### 1. List Available Plans
 
 **Endpoint**

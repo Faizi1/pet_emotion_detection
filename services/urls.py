@@ -28,6 +28,9 @@ urlpatterns = [
     path('history/<str:log_id>', views.history_detail),
     path('admin/analytics', views.admin_analytics),
     
+    # Privacy / Consent (AI / third-party processing)
+    path('privacy/ai-consent', views.ai_consent),
+    
     # Community/Posts endpoints
     path('community/posts', views.community_posts_list),
     path('community/posts/my', views.my_posts_list),
@@ -36,9 +39,16 @@ urlpatterns = [
     path('community/posts/<str:post_id>/delete', views.community_post_delete),
     path('community/posts/<str:post_id>/like', views.toggle_post_like),
     path('community/posts/<str:post_id>/share', views.share_post),
+    path('community/posts/<str:post_id>/report', views.report_post),
     path('community/posts/<str:post_id>/comments', views.post_comments_list),
     path('community/comments/create', views.create_comment),
     path('community/comments/<str:post_id>/<str:comment_id>/delete', views.delete_comment),
+    path('community/comments/<str:post_id>/<str:comment_id>/report', views.report_comment),
+    path('community/users/<str:target_uid>/block', views.block_user),
+    
+    # Admin moderation
+    path('admin/moderation/reports', views.admin_list_reports),
+    path('admin/moderation/reports/<str:report_id>/action', views.admin_moderation_action),
     
     # Utility endpoints
     path('admin/storage-config', views.check_storage_config),

@@ -194,11 +194,8 @@ USE_TELNYX = os.getenv('USE_TELNYX', 'false').lower() == 'true'
 USE_ENHANCED_HYBRID = os.getenv('USE_ENHANCED_HYBRID', 'false').lower() == 'true'
 
 # Image Emotion Detection Settings
-# Choose which service to use: 'google_vision' or 'nyckel'
-IMAGE_EMOTION_SERVICE = os.getenv('IMAGE_EMOTION_SERVICE', 'google_vision').lower()
-
-# Google Cloud Vision API
-GOOGLE_APPLICATION_CREDENTIALS = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', '')
+# Nyckel-only configuration
+IMAGE_EMOTION_SERVICE = 'nyckel'
 
 # Nyckel API (Dog Emotions Identifier)
 NYCKEL_BEARER_TOKEN = os.getenv('NYCKEL_BEARER_TOKEN', '')

@@ -1,0 +1,580 @@
+{
+  "info": {
+    "name": "PetMood - Privacy, UGC & Moderation APIs",
+    "_postman_id": "9f3f75b7-3496-4b2c-a1e8-f9a8d4f3be10",
+    "description": "Collection for AI consent, scan consent enforcement, UGC safety (report/block/filter), and admin moderation actions.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{BASE_URL}}/api/health",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Privacy / AI Consent",
+      "item": [
+        {
+          "name": "Get AI Consent Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/privacy/ai-consent",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "ai-consent"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Set AI Consent - Grant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"granted\": true,\n  \"providers\": [\"nyckel\", \"assemblyai\"]\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/privacy/ai-consent",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "ai-consent"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Set AI Consent - Revoke",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"granted\": false,\n  \"providers\": []\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/privacy/ai-consent",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "ai-consent"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scan (Consent Enforcement)",
+      "item": [
+        {
+          "name": "Create Scan - Image (multipart/form-data)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "petId",
+                  "value": "{{PET_ID}}",
+                  "type": "text"
+                },
+                {
+                  "key": "mediaType",
+                  "value": "image",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "{{IMAGE_FILE_PATH}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/scans",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "scans"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Scan - Audio (multipart/form-data)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "petId",
+                  "value": "{{PET_ID}}",
+                  "type": "text"
+                },
+                {
+                  "key": "mediaType",
+                  "value": "audio",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "{{AUDIO_FILE_PATH}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/scans",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "scans"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "UGC - Posts/Comments/Block",
+      "item": [
+        {
+          "name": "Create Community Post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"My pet is super playful today!\",\n  \"tags\": [\"pet\", \"mood\"],\n  \"isPublic\": true\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/community/posts/create",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "community",
+                "posts",
+                "create"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Community Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"postId\": \"{{POST_ID}}\",\n  \"content\": \"Thanks for sharing!\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/community/comments/create",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "community",
+                "comments",
+                "create"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Report Post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Harassment\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/community/posts/{{POST_ID}}/report",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "community",
+                "posts",
+                "{{POST_ID}}",
+                "report"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Report Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Abusive language\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/community/comments/{{POST_ID}}/{{COMMENT_ID}}/report",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "community",
+                "comments",
+                "{{POST_ID}}",
+                "{{COMMENT_ID}}",
+                "report"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Block User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Harassment\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/community/users/{{TARGET_UID}}/block",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "community",
+                "users",
+                "{{TARGET_UID}}",
+                "block"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Community Feed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/community/posts?limit=20&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "community",
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Moderation",
+      "item": [
+        {
+          "name": "List Reports (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/admin/moderation/reports?status=new&limit=50",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "moderation",
+                "reports"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "new"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Moderation Action - Mark Reviewed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"mark_reviewed\",\n  \"adminNote\": \"Reviewed by moderator\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/admin/moderation/reports/{{REPORT_ID}}/action",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "moderation",
+                "reports",
+                "{{REPORT_ID}}",
+                "action"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Moderation Action - Remove Content and Suspend User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ADMIN_FIREBASE_ID_TOKEN}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"remove_content_and_suspend_user\",\n  \"adminNote\": \"Policy violation confirmed\",\n  \"suspendReason\": \"Abusive content\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/admin/moderation/reports/{{REPORT_ID}}/action",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "moderation",
+                "reports",
+                "{{REPORT_ID}}",
+                "action"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "https://pet-emotion-detection.onrender.com"
+    },
+    {
+      "key": "FIREBASE_ID_TOKEN",
+      "value": ""
+    },
+    {
+      "key": "ADMIN_FIREBASE_ID_TOKEN",
+      "value": ""
+    },
+    {
+      "key": "PET_ID",
+      "value": ""
+    },
+    {
+      "key": "POST_ID",
+      "value": ""
+    },
+    {
+      "key": "COMMENT_ID",
+      "value": ""
+    },
+    {
+      "key": "REPORT_ID",
+      "value": ""
+    },
+    {
+      "key": "TARGET_UID",
+      "value": ""
+    },
+    {
+      "key": "IMAGE_FILE_PATH",
+      "value": ""
+    },
+    {
+      "key": "AUDIO_FILE_PATH",
+      "value": ""
+    }
+  ]
+}
