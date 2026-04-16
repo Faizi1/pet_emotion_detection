@@ -18,12 +18,15 @@ from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from django.views.decorators.http import require_http_methods
 from django.middleware.csrf import get_token
 import json
+import logging
 from .auth import FirebaseUser
 from .firebase import get_auth, get_firestore
 from .sms_service import sms_service
+from .email_service import send_blocked_user_email
 # Remove AI detector integration; use random fallback only
 emotion_detector = None
 AI_DETECTOR_TYPE = "none"
+logger = logging.getLogger(__name__)
 from .serializers import (
     UserSerializer,
     PetSerializer,
@@ -3127,7 +3130,23 @@ def block_user(request, target_uid: str):
     ref = _content_reports_collection().document()
     ref.set(report)
 
-    return Response({"blocked": True, "targetUid": target_uid, "reportId": ref.id})
+    block_notification_email_sent = False
+    try:
+        target_record = get_auth().get_user(target_uid)
+        target_email = getattr(target_record, "email", None) or ""
+        if target_email:
+            block_notification_email_sent = send_blocked_user_email(target_email)
+    except Exception as exc:
+        logger.warning("Block notification email skipped: %s", exc)
+
+    return Response(
+        {
+            "blocked": True,
+            "targetUid": target_uid,
+            "reportId": ref.id,
+            "blockNotificationEmailSent": block_notification_email_sent,
+        }
+    )
 
 
 @swagger_auto_schema(

@@ -1,0 +1,244 @@
+{
+  "info": {
+    "name": "PetMood - Subscriptions IAP APIs",
+    "_postman_id": "a5d2f5dc-2be0-42c2-a894-95c6a70b5999",
+    "description": "Subscription APIs: plans, verify-receipt (with optional signed_transaction_jws), status, restore, webhook, admin list.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "List Plans",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{BASE_URL}}/api/subscriptions/plans",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "subscriptions",
+            "plans"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Verify Receipt (transaction_id only)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"product_id\": \"com.petmood.premium.monthly\",\n  \"transaction_id\": \"{{TRANSACTION_ID}}\",\n  \"original_transaction_id\": \"{{ORIGINAL_TRANSACTION_ID}}\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/subscriptions/verify-receipt",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "subscriptions",
+            "verify-receipt"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Verify Receipt (with signed_transaction_jws)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"product_id\": \"com.petmood.premium.monthly\",\n  \"transaction_id\": \"{{TRANSACTION_ID}}\",\n  \"original_transaction_id\": \"{{ORIGINAL_TRANSACTION_ID}}\",\n  \"signed_transaction_jws\": \"{{SIGNED_TRANSACTION_JWS}}\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/subscriptions/verify-receipt",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "subscriptions",
+            "verify-receipt"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Subscription Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{BASE_URL}}/api/subscriptions/status",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "subscriptions",
+            "status"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Restore Purchases",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/subscriptions/restore",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "subscriptions",
+            "restore"
+          ]
+        }
+      }
+    },
+    {
+      "name": "App Store Webhook (test payload)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"signedPayload\": \"{{APPLE_SIGNED_PAYLOAD}}\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/subscriptions/webhook",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "subscriptions",
+            "webhook"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin List Subscriptions",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{ADMIN_FIREBASE_ID_TOKEN}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{BASE_URL}}/api/subscriptions/admin/list?uid={{TARGET_UID}}",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "subscriptions",
+            "admin",
+            "list"
+          ],
+          "query": [
+            {
+              "key": "uid",
+              "value": "{{TARGET_UID}}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "https://pet-emotion-detection.onrender.com"
+    },
+    {
+      "key": "FIREBASE_ID_TOKEN",
+      "value": ""
+    },
+    {
+      "key": "ADMIN_FIREBASE_ID_TOKEN",
+      "value": ""
+    },
+    {
+      "key": "TRANSACTION_ID",
+      "value": ""
+    },
+    {
+      "key": "ORIGINAL_TRANSACTION_ID",
+      "value": ""
+    },
+    {
+      "key": "SIGNED_TRANSACTION_JWS",
+      "value": ""
+    },
+    {
+      "key": "APPLE_SIGNED_PAYLOAD",
+      "value": ""
+    },
+    {
+      "key": "TARGET_UID",
+      "value": ""
+    }
+  ]
+}

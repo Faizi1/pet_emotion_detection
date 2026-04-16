@@ -21,6 +21,14 @@ PRODUCT_MAPPING = {
     "com.petmood.family.annual": ("family", "annual"),
 }
 
+# 7-day introductory trial metadata for UI guidance.
+# NOTE: Real trial eligibility/billing behavior is controlled by App Store Connect + StoreKit.
+TRIAL_DAYS = 7
+TRIAL_ELIGIBLE_PRODUCTS = {
+    "com.petmood.premium.monthly",
+    "com.petmood.family.monthly",
+}
+
 
 @api_view(["POST"])
 @permission_classes([AllowAny])  # Apple server, no Firebase token
@@ -97,7 +105,7 @@ def app_store_webhook(request):
 def verify_receipt(request):
     """
     POST /api/subscriptions/verify-receipt
-    Body: { receipt_data?, product_id, transaction_id, original_transaction_id? }
+    Body: { receipt_data?, product_id, transaction_id, original_transaction_id?, signed_transaction_jws? }
     """
     ser = VerifyReceiptSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
@@ -113,19 +121,55 @@ def verify_receipt(request):
     if product_id not in PRODUCT_MAPPING:
         return Response({"success": False, "message": "Unknown product_id"}, status=status.HTTP_400_BAD_REQUEST)
 
+    signed_jws = data.get("signed_transaction_jws")
+    plan_type, period = PRODUCT_MAPPING[product_id]
+    expires_at = None
+    final_transaction_id = transaction_id
+    final_original_transaction_id = data.get("original_transaction_id") or None
+
     try:
         apple = AppleAppStoreClient()
-        tx = apple.get_transaction_info(transaction_id)
+
+        # If StoreKit 2 JWS is provided, validate and use it first.
+        if signed_jws:
+            jws_payload = apple.decode_and_verify_jws(signed_jws)
+
+            jws_bundle_id = jws_payload.get("bundleId")
+            if jws_bundle_id and jws_bundle_id != apple.bundle_id:
+                return Response({"success": False, "message": "bundle_id mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+
+            jws_product_id = jws_payload.get("productId")
+            if jws_product_id and jws_product_id != product_id:
+                return Response({"success": False, "message": "product_id mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+
+            jws_tx_id = str(jws_payload.get("transactionId") or "")
+            if jws_tx_id and jws_tx_id != str(transaction_id):
+                return Response({"success": False, "message": "transaction_id mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+
+            from datetime import datetime, timezone
+            expires_ms = jws_payload.get("expiresDate")
+            if expires_ms:
+                expires_at = datetime.fromtimestamp(expires_ms / 1000.0, tz=timezone.utc)
+            final_transaction_id = jws_tx_id or final_transaction_id
+            final_original_transaction_id = (
+                jws_payload.get("originalTransactionId")
+                or final_original_transaction_id
+            )
+
+        # If we still don't have expiry from JWS, fetch authoritative transaction info.
+        if not expires_at:
+            tx = apple.get_transaction_info(transaction_id)
+            if tx.product_id and tx.product_id != product_id:
+                return Response({"success": False, "message": "product_id mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+            expires_at = tx.expires_at
+            final_transaction_id = tx.transaction_id or final_transaction_id
+            final_original_transaction_id = tx.original_transaction_id or final_original_transaction_id
+
     except AppleAppStoreServerAPIError as e:
         return Response({"success": False, "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception:
         return Response({"success": False, "message": "Receipt verification failed"}, status=status.HTTP_400_BAD_REQUEST)
 
-    if tx.product_id and tx.product_id != product_id:
-        return Response({"success": False, "message": "product_id mismatch"}, status=status.HTTP_400_BAD_REQUEST)
-
-    plan_type, period = PRODUCT_MAPPING[product_id]
-    expires_at = tx.expires_at
     if not expires_at:
         return Response({"success": False, "message": "Missing expires_at"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -136,8 +180,8 @@ def verify_receipt(request):
         product_id=product_id,
         plan_type=plan_type,
         period=period,
-        transaction_id=tx.transaction_id,
-        original_transaction_id=tx.original_transaction_id or data.get("original_transaction_id") or None,
+        transaction_id=final_transaction_id,
+        original_transaction_id=final_original_transaction_id,
         expires_at=expires_at,
         is_active=is_active,
     )
@@ -246,6 +290,11 @@ def list_plans(request):
                 "period": period,
                 "platform": "apple",
                 "price_display": "",
+                "trial_offer": {
+                    "enabled": product_id in TRIAL_ELIGIBLE_PRODUCTS,
+                    "days": TRIAL_DAYS if product_id in TRIAL_ELIGIBLE_PRODUCTS else 0,
+                    "type": "introductory",
+                },
             }
         )
     return Response({"plans": data})

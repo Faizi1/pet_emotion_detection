@@ -6,5 +6,6 @@ class VerifyReceiptSerializer(serializers.Serializer):
     product_id = serializers.CharField()
     transaction_id = serializers.CharField()
     original_transaction_id = serializers.CharField(required=False, allow_blank=True)
+    signed_transaction_jws = serializers.CharField(required=False, allow_blank=True)
 
 
