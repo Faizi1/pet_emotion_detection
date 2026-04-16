@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from services.firebase import get_firestore
+from google.api_core.exceptions import FailedPrecondition
 
 
 SUBSCRIPTIONS_SUBCOLLECTION = "subscriptions"
@@ -65,15 +66,24 @@ def get_active_subscription(uid: str) -> Optional[Dict[str, Any]]:
     """
     now = _now_utc()
     # Firestore can order by string ISO timestamps lexicographically if same format (ISO Z).
-    docs = (
-        subscriptions_collection(uid)
-        .where("is_active", "==", True)
-        .order_by("expires_at", direction="DESCENDING")
-        .limit(5)
-        .stream()
-    )
+    try:
+        docs = (
+            subscriptions_collection(uid)
+            .where("is_active", "==", True)
+            .order_by("expires_at", direction="DESCENDING")
+            .limit(5)
+            .stream()
+        )
+        docs_list = list(docs)
+    except FailedPrecondition:
+        # Composite index may still be building. Fallback to unordered query + local sort.
+        docs_list = list(subscriptions_collection(uid).where("is_active", "==", True).stream())
+        def _expires_key(doc) -> str:
+            data = doc.to_dict() or {}
+            return str(data.get("expires_at") or "")
+        docs_list.sort(key=_expires_key, reverse=True)
     best: Optional[Dict[str, Any]] = None
-    for d in docs:
+    for d in docs_list[:5]:
         data = d.to_dict() or {}
         expires_at = data.get("expires_at")
         try:
@@ -88,14 +98,22 @@ def get_active_subscription(uid: str) -> Optional[Dict[str, Any]]:
 
 def list_active_subscriptions(uid: str) -> List[Dict[str, Any]]:
     now = _now_utc()
-    docs = (
-        subscriptions_collection(uid)
-        .where("is_active", "==", True)
-        .order_by("expires_at", direction="DESCENDING")
-        .stream()
-    )
+    try:
+        docs = (
+            subscriptions_collection(uid)
+            .where("is_active", "==", True)
+            .order_by("expires_at", direction="DESCENDING")
+            .stream()
+        )
+        docs_list = list(docs)
+    except FailedPrecondition:
+        docs_list = list(subscriptions_collection(uid).where("is_active", "==", True).stream())
+        def _expires_key(doc) -> str:
+            data = doc.to_dict() or {}
+            return str(data.get("expires_at") or "")
+        docs_list.sort(key=_expires_key, reverse=True)
     out: List[Dict[str, Any]] = []
-    for d in docs:
+    for d in docs_list:
         data = d.to_dict() or {}
         expires_at = data.get("expires_at")
         try:
