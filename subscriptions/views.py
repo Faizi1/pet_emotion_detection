@@ -2,6 +2,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+import json
 
 from services.permissions import IsAdminFirebase
 from .apple import AppleAppStoreClient, AppleAppStoreServerAPIError
@@ -30,6 +31,22 @@ TRIAL_ELIGIBLE_PRODUCTS = {
 }
 
 
+def _debug_request(api_name: str, request) -> None:
+    try:
+        payload = request.data if request.method in {"POST", "PUT", "PATCH"} else request.query_params.dict()
+    except Exception:
+        payload = {}
+    print(f"[subscriptions][{api_name}] request_payload={json.dumps(payload, default=str)}")
+
+
+def _debug_response(api_name: str, body, status_code: int = status.HTTP_200_OK) -> Response:
+    print(
+        f"[subscriptions][{api_name}] response_status={status_code} "
+        f"response_body={json.dumps(body, default=str)}"
+    )
+    return Response(body, status=status_code)
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])  # Apple server, no Firebase token
 def app_store_webhook(request):
@@ -42,15 +59,20 @@ def app_store_webhook(request):
     NOTE: To fully link notifications to your Firebase users, the iOS app
     should pass the Firebase uid as `appAccountToken` in the original purchase.
     """
+    _debug_request("app_store_webhook", request)
     signed_payload = request.data.get("signedPayload")
     if not signed_payload:
-        return Response({"detail": "signedPayload missing"}, status=status.HTTP_400_BAD_REQUEST)
+        return _debug_response("app_store_webhook", {"detail": "signedPayload missing"}, status.HTTP_400_BAD_REQUEST)
 
     client = AppleAppStoreClient()
     try:
         payload = client.decode_and_verify_jws(signed_payload)
     except Exception as exc:
-        return Response({"detail": f"Invalid signedPayload: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
+        return _debug_response(
+            "app_store_webhook",
+            {"detail": f"Invalid signedPayload: {exc}"},
+            status.HTTP_400_BAD_REQUEST,
+        )
 
     # Basic fields from notification
     notification_type = payload.get("notificationType")
@@ -98,7 +120,10 @@ def app_store_webhook(request):
             )
 
     # Always respond 200 OK so Apple knows we handled it.
-    return Response({"received": True, "notificationType": notification_type, "subtype": subtype})
+    return _debug_response(
+        "app_store_webhook",
+        {"received": True, "notificationType": notification_type, "subtype": subtype},
+    )
 
 
 @api_view(["POST"])
@@ -107,19 +132,24 @@ def verify_receipt(request):
     POST /api/subscriptions/verify-receipt
     Body: { receipt_data?, product_id, transaction_id, original_transaction_id?, signed_transaction_jws? }
     """
+    _debug_request("verify_receipt", request)
     ser = VerifyReceiptSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
     data = ser.validated_data
 
     uid = getattr(request.user, "uid", None)
     if not uid:
-        return Response({"success": False, "message": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+        return _debug_response("verify_receipt", {"success": False, "message": "Unauthorized"}, status.HTTP_401_UNAUTHORIZED)
 
     product_id = data["product_id"]
     transaction_id = data["transaction_id"]
 
     if product_id not in PRODUCT_MAPPING:
-        return Response({"success": False, "message": "Unknown product_id"}, status=status.HTTP_400_BAD_REQUEST)
+        return _debug_response(
+            "verify_receipt",
+            {"success": False, "message": "Unknown product_id"},
+            status.HTTP_400_BAD_REQUEST,
+        )
 
     signed_jws = data.get("signed_transaction_jws")
     plan_type, period = PRODUCT_MAPPING[product_id]
@@ -136,15 +166,27 @@ def verify_receipt(request):
 
             jws_bundle_id = jws_payload.get("bundleId")
             if jws_bundle_id and jws_bundle_id != apple.bundle_id:
-                return Response({"success": False, "message": "bundle_id mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+                return _debug_response(
+                    "verify_receipt",
+                    {"success": False, "message": "bundle_id mismatch"},
+                    status.HTTP_400_BAD_REQUEST,
+                )
 
             jws_product_id = jws_payload.get("productId")
             if jws_product_id and jws_product_id != product_id:
-                return Response({"success": False, "message": "product_id mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+                return _debug_response(
+                    "verify_receipt",
+                    {"success": False, "message": "product_id mismatch"},
+                    status.HTTP_400_BAD_REQUEST,
+                )
 
             jws_tx_id = str(jws_payload.get("transactionId") or "")
             if jws_tx_id and jws_tx_id != str(transaction_id):
-                return Response({"success": False, "message": "transaction_id mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+                return _debug_response(
+                    "verify_receipt",
+                    {"success": False, "message": "transaction_id mismatch"},
+                    status.HTTP_400_BAD_REQUEST,
+                )
 
             from datetime import datetime, timezone
             expires_ms = jws_payload.get("expiresDate")
@@ -160,18 +202,30 @@ def verify_receipt(request):
         if not expires_at:
             tx = apple.get_transaction_info(transaction_id)
             if tx.product_id and tx.product_id != product_id:
-                return Response({"success": False, "message": "product_id mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+                return _debug_response(
+                    "verify_receipt",
+                    {"success": False, "message": "product_id mismatch"},
+                    status.HTTP_400_BAD_REQUEST,
+                )
             expires_at = tx.expires_at
             final_transaction_id = tx.transaction_id or final_transaction_id
             final_original_transaction_id = tx.original_transaction_id or final_original_transaction_id
 
     except AppleAppStoreServerAPIError as e:
-        return Response({"success": False, "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return _debug_response("verify_receipt", {"success": False, "message": str(e)}, status.HTTP_400_BAD_REQUEST)
     except Exception:
-        return Response({"success": False, "message": "Receipt verification failed"}, status=status.HTTP_400_BAD_REQUEST)
+        return _debug_response(
+            "verify_receipt",
+            {"success": False, "message": "Receipt verification failed"},
+            status.HTTP_400_BAD_REQUEST,
+        )
 
     if not expires_at:
-        return Response({"success": False, "message": "Missing expires_at"}, status=status.HTTP_400_BAD_REQUEST)
+        return _debug_response(
+            "verify_receipt",
+            {"success": False, "message": "Missing expires_at"},
+            status.HTTP_400_BAD_REQUEST,
+        )
 
     # expires_at is timezone-aware UTC from Apple client
     is_active = True  # if expires_at exists, we still calculate active below using ISO parsing on reads
@@ -186,7 +240,8 @@ def verify_receipt(request):
         is_active=is_active,
     )
 
-    return Response(
+    return _debug_response(
+        "verify_receipt",
         {
             "success": True,
             "subscription": {
@@ -195,7 +250,7 @@ def verify_receipt(request):
                 "expires_at": payload["expires_at"],
                 "is_active": True,
             },
-        }
+        },
     )
 
 
@@ -208,12 +263,17 @@ def admin_list_subscriptions(request):
     Admin/debug endpoint to list all subscriptions for a given uid.
     Requires Firebase admin privileges (IsAdminFirebase).
     """
+    _debug_request("admin_list_subscriptions", request)
     uid = request.query_params.get("uid") or getattr(request.user, "uid", None)
     if not uid:
-        return Response({"detail": "uid is required"}, status=status.HTTP_400_BAD_REQUEST)
+        return _debug_response(
+            "admin_list_subscriptions",
+            {"detail": "uid is required"},
+            status.HTTP_400_BAD_REQUEST,
+        )
 
     subs = list_all_subscriptions(uid)
-    return Response({"uid": uid, "subscriptions": subs})
+    return _debug_response("admin_list_subscriptions", {"uid": uid, "subscriptions": subs})
 
 
 @api_view(["GET"])
@@ -221,15 +281,17 @@ def subscription_status(request):
     """
     GET /api/subscriptions/status
     """
+    _debug_request("subscription_status", request)
     uid = getattr(request.user, "uid", None)
     if not uid:
-        return Response({"subscription": None}, status=status.HTTP_200_OK)
+        return _debug_response("subscription_status", {"subscription": None}, status.HTTP_200_OK)
 
     sub = get_active_subscription(uid)
     if not sub:
-        return Response({"subscription": None}, status=status.HTTP_200_OK)
+        return _debug_response("subscription_status", {"subscription": None}, status.HTTP_200_OK)
 
-    return Response(
+    return _debug_response(
+        "subscription_status",
         {
             "subscription": {
                 "plan_type": sub.get("plan_type"),
@@ -238,7 +300,7 @@ def subscription_status(request):
                 "is_active": True,
                 "product_id": sub.get("product_id"),
             }
-        }
+        },
     )
 
 
@@ -248,13 +310,15 @@ def restore_purchases(request):
     POST /api/subscriptions/restore
     Returns active subscriptions in DB for this uid.
     """
+    _debug_request("restore_purchases", request)
     uid = getattr(request.user, "uid", None)
     if not uid:
-        return Response({"subscriptions": []}, status=status.HTTP_200_OK)
+        return _debug_response("restore_purchases", {"subscriptions": []}, status.HTTP_200_OK)
 
     subs = list_active_subscriptions(uid)
 
-    return Response(
+    return _debug_response(
+        "restore_purchases",
         {
             "subscriptions": [
                 {
@@ -266,7 +330,7 @@ def restore_purchases(request):
                 }
                 for s in subs
             ]
-        }
+        },
     )
 
 
@@ -279,6 +343,7 @@ def list_plans(request):
     Returns the list of available subscription plans derived from PRODUCT_MAPPING.
     This is intended for the client app's pricing/subscription screen.
     """
+    _debug_request("list_plans", request)
     data = []
     for product_id, (plan_type, period) in PRODUCT_MAPPING.items():
         name = f"{plan_type.capitalize()} {period.capitalize()}"
@@ -297,7 +362,7 @@ def list_plans(request):
                 },
             }
         )
-    return Response({"plans": data})
+    return _debug_response("list_plans", {"plans": data})
 
 
 
