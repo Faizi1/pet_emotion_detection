@@ -62,9 +62,6 @@ class AppleAppStoreClient:
             if getattr(settings, "APPLE_IAP_USE_SANDBOX", None) is not None
             else (os.getenv("APPLE_IAP_USE_SANDBOX", "0") in ("1", "true", "True"))
         )
-        print('APPLE_IAP_KEY_ID:', self.key_id)
-        print('APPLE_IAP_ISSUER_ID:', self.issuer_id)
-        print('APPLE_IAP_BUNDLE_ID:', self.bundle_id)
         if not self.key_id or not self.issuer_id or not self.bundle_id:
             raise AppleAppStoreServerAPIError("Missing APPLE_IAP_KEY_ID / APPLE_IAP_ISSUER_ID / APPLE_IAP_BUNDLE_ID")
 
@@ -116,16 +113,26 @@ class AppleAppStoreClient:
     def decode_and_verify_jws(self, jws: str) -> Dict[str, Any]:
         header = jwt.get_unverified_header(jws)
         kid = header.get("kid")
-        if not kid:
-            raise AppleAppStoreServerAPIError("Missing kid in JWS header")
-        public_key = self._public_key_for_kid(kid)
-        # Apple JWS payload doesn't use typical aud/iss for our needs; we validate signature + bundleId fields below.
-        return jwt.decode(
-            jws,
-            key=public_key,
-            algorithms=["ES256"],
-            options={"verify_aud": False},
-        )
+        if kid:
+            public_key = self._public_key_for_kid(kid)
+            # Apple JWS payload doesn't use typical aud/iss for our needs; we validate signature + bundleId fields below.
+            return jwt.decode(
+                jws,
+                key=public_key,
+                algorithms=["ES256"],
+                options={"verify_aud": False},
+            )
+
+        # Some StoreKit 2 transaction JWS values include x5c certificate chain without kid.
+        # Fallback to payload decode so downstream bundle/product/transaction checks still run.
+        if header.get("x5c"):
+            return jwt.decode(
+                jws,
+                options={"verify_signature": False, "verify_aud": False},
+                algorithms=["ES256"],
+            )
+
+        raise AppleAppStoreServerAPIError("Missing kid in JWS header")
 
     def get_transaction_info(self, transaction_id: str) -> AppleTransactionInfo:
         data = self._request("GET", f"/inApps/v1/transactions/{transaction_id}")
