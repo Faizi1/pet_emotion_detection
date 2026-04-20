@@ -62,7 +62,9 @@ class AppleAppStoreClient:
             if getattr(settings, "APPLE_IAP_USE_SANDBOX", None) is not None
             else (os.getenv("APPLE_IAP_USE_SANDBOX", "0") in ("1", "true", "True"))
         )
-
+        print('APPLE_IAP_KEY_ID:', self.key_id)
+        print('APPLE_IAP_ISSUER_ID:', self.issuer_id)
+        print('APPLE_IAP_BUNDLE_ID:', self.bundle_id)
         if not self.key_id or not self.issuer_id or not self.bundle_id:
             raise AppleAppStoreServerAPIError("Missing APPLE_IAP_KEY_ID / APPLE_IAP_ISSUER_ID / APPLE_IAP_BUNDLE_ID")
 
