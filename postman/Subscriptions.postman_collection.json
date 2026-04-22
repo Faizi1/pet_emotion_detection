@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "00000000-0000-0000-0000-000000000000",
     "name": "Pet Emotion Detection - Subscriptions",
-    "description": "Endpoints for the subscriptions app (plans, status, restore, verify receipt, webhook, admin).",
+    "description": "Endpoints for subscriptions app (plans, verify receipt, status, restore, cancel, webhook, admin) and trial scan-limit testing.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -117,6 +117,38 @@
           "response": []
         },
         {
+          "name": "Cancel Subscription (Apple-managed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subscriptions/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "subscriptions",
+                "cancel"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "App Store Webhook (Server Notifications)",
           "request": {
             "method": "POST",
@@ -139,6 +171,49 @@
                 "api",
                 "subscriptions",
                 "webhook"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Scan Create (Trial limit test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "petId",
+                  "value": "{{petId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "mediaType",
+                  "value": "image",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "{{sampleImagePath}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/scans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scans"
               ]
             }
           },
@@ -193,6 +268,14 @@
     },
     {
       "key": "firebaseUid",
+      "value": ""
+    },
+    {
+      "key": "petId",
+      "value": ""
+    },
+    {
+      "key": "sampleImagePath",
       "value": ""
     }
   ]

@@ -2,7 +2,7 @@
   "info": {
     "name": "PetMood - Subscriptions IAP APIs",
     "_postman_id": "a5d2f5dc-2be0-42c2-a894-95c6a70b5999",
-    "description": "Subscription APIs: plans, verify-receipt (with optional signed_transaction_jws), status, restore, webhook, admin list.",
+    "description": "Subscription APIs: plans, verify-receipt, status, restore, cancel, webhook, admin list, plus trial scan-limit test.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -148,6 +148,39 @@
       }
     },
     {
+      "name": "Cancel Subscription (Apple-managed)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/subscriptions/cancel",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "subscriptions",
+            "cancel"
+          ]
+        }
+      }
+    },
+    {
       "name": "App Store Webhook (test payload)",
       "request": {
         "method": "POST",
@@ -171,6 +204,49 @@
             "api",
             "subscriptions",
             "webhook"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Scan Create (Trial limit test)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{FIREBASE_ID_TOKEN}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "petId",
+              "value": "{{PET_ID}}",
+              "type": "text"
+            },
+            {
+              "key": "mediaType",
+              "value": "image",
+              "type": "text"
+            },
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{SAMPLE_IMAGE_PATH}}"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/scans",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "scans"
           ]
         }
       }
@@ -238,6 +314,14 @@
     },
     {
       "key": "TARGET_UID",
+      "value": ""
+    },
+    {
+      "key": "PET_ID",
+      "value": ""
+    },
+    {
+      "key": "SAMPLE_IMAGE_PATH",
       "value": ""
     }
   ]

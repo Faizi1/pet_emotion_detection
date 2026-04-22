@@ -3,12 +3,14 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 import json
+from datetime import datetime, timezone
 
 from services.permissions import IsAdminFirebase
 from .apple import AppleAppStoreClient, AppleAppStoreServerAPIError
 from .serializers import VerifyReceiptSerializer
 from .firestore import (
     get_active_subscription,
+    get_latest_subscription,
     list_active_subscriptions,
     save_subscription_for_uid,
     list_all_subscriptions,
@@ -47,6 +49,49 @@ def _debug_response(api_name: str, body, status_code: int = status.HTTP_200_OK) 
     return Response(body, status=status_code)
 
 
+def _debug_payload(api_name: str, label: str, payload) -> None:
+    print(f"[subscriptions][{api_name}] {label}={json.dumps(payload, default=str)}")
+
+
+def _parse_iso_utc(value: str):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _trial_days_left(expires_at_iso: str) -> int:
+    expires_at = _parse_iso_utc(expires_at_iso)
+    if not expires_at:
+        return 0
+    now = datetime.now(timezone.utc)
+    if expires_at <= now:
+        return 0
+    seconds_left = (expires_at - now).total_seconds()
+    # Ceil to communicate whole remaining trial days to client UI.
+    return int((seconds_left + 86399) // 86400)
+
+
+def _subscription_response_shape(sub: dict, *, is_active: bool) -> dict:
+    expires_at = sub.get("expires_at")
+    is_trial = bool(sub.get("is_trial", False))
+    return {
+        "plan_type": sub.get("plan_type"),
+        "period": sub.get("period"),
+        "expires_at": expires_at,
+        "is_active": bool(is_active),
+        "product_id": sub.get("product_id"),
+        "is_trial": is_trial,
+        "trial_days": int(sub.get("trial_days") or 0),
+        "trial_days_left": _trial_days_left(expires_at) if is_trial else 0,
+        "offer_type": sub.get("offer_type"),
+        "offer_period": sub.get("offer_period"),
+        "environment": sub.get("environment"),
+    }
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])  # Apple server, no Firebase token
 def app_store_webhook(request):
@@ -65,8 +110,11 @@ def app_store_webhook(request):
         return _debug_response("app_store_webhook", {"detail": "signedPayload missing"}, status.HTTP_400_BAD_REQUEST)
 
     client = AppleAppStoreClient()
+    decoded_notification_payload = {}
     try:
         payload = client.decode_and_verify_jws(signed_payload)
+        decoded_notification_payload = payload
+        _debug_payload("app_store_webhook", "decoded_notification_payload", payload)
     except Exception as exc:
         return _debug_response(
             "app_store_webhook",
@@ -85,21 +133,22 @@ def app_store_webhook(request):
     tx_product_id = None
     tx_expires_at = None
     tx_transaction_id = None
+    tx_payload = {}
 
     if signed_tx:
         try:
             tx_payload = client.decode_and_verify_jws(signed_tx)
+            _debug_payload("app_store_webhook", "decoded_transaction_payload", tx_payload)
             app_account_token = tx_payload.get("appAccountToken")
             tx_product_id = tx_payload.get("productId")
             tx_transaction_id = tx_payload.get("transactionId")
             expires_ms = tx_payload.get("expiresDate")
 
-            from datetime import datetime, timezone
-
             if expires_ms:
                 tx_expires_at = datetime.fromtimestamp(expires_ms / 1000.0, tz=timezone.utc)
         except Exception:
             # If decoding fails, we still return 200 so Apple doesn't keep retrying.
+            _debug_payload("app_store_webhook", "decoded_transaction_payload_error", {"detail": "signedTransactionInfo decode failed"})
             pass
 
     # If appAccountToken is present and we can map to Firebase uid, persist subscription.
@@ -117,12 +166,23 @@ def app_store_webhook(request):
                 original_transaction_id=tx_payload.get("originalTransactionId"),
                 expires_at=tx_expires_at,
                 is_active=True,
+                is_trial=bool((tx_payload.get("offerType") or 0) == 1 or tx_payload.get("offerDiscountType") == "FREE_TRIAL"),
+                trial_days=TRIAL_DAYS if tx_product_id in TRIAL_ELIGIBLE_PRODUCTS else 0,
+                offer_type=str(tx_payload.get("offerType") or ""),
+                offer_period=tx_payload.get("offerPeriod"),
+                environment=tx_payload.get("environment"),
             )
 
     # Always respond 200 OK so Apple knows we handled it.
     return _debug_response(
         "app_store_webhook",
-        {"received": True, "notificationType": notification_type, "subtype": subtype},
+        {
+            "received": True,
+            "notificationType": notification_type,
+            "subtype": subtype,
+            "decodedNotificationPayload": decoded_notification_payload,
+            "decodedTransactionPayload": tx_payload,
+        },
     )
 
 
@@ -154,6 +214,7 @@ def verify_receipt(request):
     signed_jws = data.get("signed_transaction_jws")
     plan_type, period = PRODUCT_MAPPING[product_id]
     expires_at = None
+    jws_payload = {}
     final_transaction_id = transaction_id
     final_original_transaction_id = data.get("original_transaction_id") or None
 
@@ -163,6 +224,7 @@ def verify_receipt(request):
         # If StoreKit 2 JWS is provided, validate and use it first.
         if signed_jws:
             jws_payload = apple.decode_and_verify_jws(signed_jws)
+            _debug_payload("verify_receipt", "decoded_signed_transaction_jws", jws_payload)
 
             jws_bundle_id = jws_payload.get("bundleId")
             if jws_bundle_id and jws_bundle_id != apple.bundle_id:
@@ -188,7 +250,6 @@ def verify_receipt(request):
                     status.HTTP_400_BAD_REQUEST,
                 )
 
-            from datetime import datetime, timezone
             expires_ms = jws_payload.get("expiresDate")
             if expires_ms:
                 expires_at = datetime.fromtimestamp(expires_ms / 1000.0, tz=timezone.utc)
@@ -238,18 +299,18 @@ def verify_receipt(request):
         original_transaction_id=final_original_transaction_id,
         expires_at=expires_at,
         is_active=is_active,
+        is_trial=bool((jws_payload.get("offerType") or 0) == 1 or jws_payload.get("offerDiscountType") == "FREE_TRIAL"),
+        trial_days=TRIAL_DAYS if product_id in TRIAL_ELIGIBLE_PRODUCTS else 0,
+        offer_type=str(jws_payload.get("offerType") or ""),
+        offer_period=jws_payload.get("offerPeriod"),
+        environment=jws_payload.get("environment"),
     )
 
     return _debug_response(
         "verify_receipt",
         {
             "success": True,
-            "subscription": {
-                "plan_type": plan_type,
-                "period": period,
-                "expires_at": payload["expires_at"],
-                "is_active": True,
-            },
+            "subscription": _subscription_response_shape(payload, is_active=True),
         },
     )
 
@@ -287,21 +348,28 @@ def subscription_status(request):
         return _debug_response("subscription_status", {"subscription": None}, status.HTTP_200_OK)
 
     sub = get_active_subscription(uid)
-    if not sub:
-        return _debug_response("subscription_status", {"subscription": None}, status.HTTP_200_OK)
+    if sub:
+        return _debug_response(
+            "subscription_status",
+            {"subscription": _subscription_response_shape(sub, is_active=True)},
+            status.HTTP_200_OK,
+        )
 
-    return _debug_response(
-        "subscription_status",
-        {
-            "subscription": {
-                "plan_type": sub.get("plan_type"),
-                "period": sub.get("period"),
-                "expires_at": sub.get("expires_at"),
-                "is_active": True,
-                "product_id": sub.get("product_id"),
-            }
-        },
-    )
+    # No active entitlement. Return last known subscription so app can show
+    # "expired" state instead of ambiguous null.
+    latest = get_latest_subscription(uid)
+    if latest:
+        return _debug_response(
+            "subscription_status",
+            {
+                "subscription": _subscription_response_shape(latest, is_active=False),
+                "access_active": False,
+                "reason": "expired_or_not_renewed",
+            },
+            status.HTTP_200_OK,
+        )
+
+    return _debug_response("subscription_status", {"subscription": None}, status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -321,16 +389,45 @@ def restore_purchases(request):
         "restore_purchases",
         {
             "subscriptions": [
-                {
-                    "is_active": True,
-                    "plan_type": s.get("plan_type"),
-                    "period": s.get("period"),
-                    "expires_at": s.get("expires_at"),
-                    "product_id": s.get("product_id"),
-                }
+                _subscription_response_shape(s, is_active=True)
                 for s in subs
             ]
         },
+    )
+
+
+@api_view(["POST"])
+def cancel_subscription(request):
+    """
+    POST /api/subscriptions/cancel
+
+    Apple subscriptions cannot be canceled directly by backend API.
+    User must cancel from Apple subscription management UI.
+    """
+    _debug_request("cancel_subscription", request)
+    uid = getattr(request.user, "uid", None)
+    if not uid:
+        return _debug_response("cancel_subscription", {"detail": "Unauthorized"}, status.HTTP_401_UNAUTHORIZED)
+
+    active_sub = get_active_subscription(uid)
+    latest_sub = active_sub or get_latest_subscription(uid)
+    subscription_payload = (
+        _subscription_response_shape(latest_sub, is_active=bool(active_sub))
+        if latest_sub else None
+    )
+
+    manage_url = "https://apps.apple.com/account/subscriptions"
+    return _debug_response(
+        "cancel_subscription",
+        {
+            "success": True,
+            "platform": "apple",
+            "canCancelDirectlyFromBackend": False,
+            "message": "Apple requires user-initiated cancellation from App Store subscription settings.",
+            "manageSubscriptionUrl": manage_url,
+            "subscription": subscription_payload,
+        },
+        status.HTTP_200_OK,
     )
 
 

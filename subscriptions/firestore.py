@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from services.firebase import get_firestore
 from google.api_core.exceptions import FailedPrecondition
@@ -33,6 +33,11 @@ def save_subscription_for_uid(
     original_transaction_id: Optional[str],
     expires_at: datetime,
     is_active: bool,
+    is_trial: bool = False,
+    trial_days: int = 0,
+    offer_type: Optional[str] = None,
+    offer_period: Optional[str] = None,
+    environment: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Store subscription under: users/{uid}/subscriptions/{transaction_id}
@@ -47,6 +52,11 @@ def save_subscription_for_uid(
         "original_transaction_id": original_transaction_id,
         "expires_at": _iso_z(expires_at),
         "is_active": bool(is_active),
+        "is_trial": bool(is_trial),
+        "trial_days": int(trial_days or 0),
+        "offer_type": offer_type,
+        "offer_period": offer_period,
+        "environment": environment,
         "updated_at": _iso_z(_now_utc()),
     }
     # Preserve created_at if already exists
@@ -140,4 +150,19 @@ def list_all_subscriptions(uid: str) -> List[Dict[str, Any]]:
         out.append(data)
     return out
 
+
+def get_latest_subscription(uid: str) -> Optional[Dict[str, Any]]:
+    """
+    Returns latest subscription by expires_at (active or expired).
+    """
+    docs = (
+        subscriptions_collection(uid)
+        .order_by("expires_at", direction="DESCENDING")
+        .limit(1)
+        .stream()
+    )
+    first = next(iter(docs), None)
+    if not first:
+        return None
+    return first.to_dict() or None
 
