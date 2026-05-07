@@ -10,7 +10,7 @@ If RESEND_API_KEY is missing, block notifications are skipped (logged) and the A
 """
 import logging
 import os
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import requests
 
@@ -71,4 +71,60 @@ def send_blocked_user_email(to_email: str, app_name: str = "PetMood") -> bool:
         logger.info("Block notification email queued/sent to %s", to_email[:3] + "***")
     else:
         logger.warning("Block notification email not sent: %s", err)
+    return ok
+
+
+def _parse_recipients(raw_value: str) -> List[str]:
+    recipients = []
+    for email in (raw_value or "").split(","):
+        cleaned = email.strip()
+        if cleaned and "@" in cleaned:
+            recipients.append(cleaned)
+    return recipients
+
+
+def send_support_notification_to_admin(user_email: str, details: str, support_id: str) -> bool:
+    recipients = _parse_recipients(os.getenv("SUPPORT_NOTIFICATION_EMAILS", ""))
+    if not recipients:
+        logger.warning("SUPPORT_NOTIFICATION_EMAILS not configured, skipping support notification")
+        return False
+
+    html = f"""
+    <p>Hello Support Team,</p>
+    <p>A new support message was submitted in PetMood.</p>
+    <ul>
+      <li><strong>Support ID:</strong> {support_id}</li>
+      <li><strong>User Email:</strong> {user_email}</li>
+    </ul>
+    <p><strong>Message:</strong></p>
+    <p>{details}</p>
+    """
+    subject = f"PetMood Support: new message from {user_email}"
+
+    sent_any = False
+    for recipient in recipients:
+        ok, err = _resend_send(recipient, subject, html)
+        if ok:
+            sent_any = True
+        else:
+            logger.warning("Support admin notification failed for %s: %s", recipient, err)
+    return sent_any
+
+
+def send_support_reply_to_user(user_email: str, reply: str, support_id: str) -> bool:
+    if not user_email or "@" not in user_email:
+        return False
+
+    subject = f"PetMood Support Reply ({support_id})"
+    html = f"""
+    <p>Hello,</p>
+    <p>Our support team replied to your request.</p>
+    <p><strong>Support ID:</strong> {support_id}</p>
+    <p><strong>Reply:</strong></p>
+    <p>{reply}</p>
+    <p>Thank you,<br/>PetMood Support</p>
+    """
+    ok, err = _resend_send(user_email, subject, html)
+    if not ok:
+        logger.warning("Support reply email not sent to %s: %s", user_email, err)
     return ok

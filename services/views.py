@@ -22,7 +22,7 @@ import logging
 from .auth import FirebaseUser
 from .firebase import get_auth, get_firestore
 from .sms_service import sms_service
-from .email_service import send_blocked_user_email
+from .email_service import send_blocked_user_email, send_support_notification_to_admin
 from subscriptions.firestore import get_active_subscription as get_user_active_subscription
 # Remove AI detector integration; use random fallback only
 emotion_detector = None
@@ -3616,6 +3616,14 @@ def send_support_message(request):
     # Create support message
     support_ref = _support_messages_collection().document()
     support_ref.set(support_data)
+    try:
+        send_support_notification_to_admin(
+            user_email=support_data['email'],
+            details=support_data['details'],
+            support_id=support_ref.id,
+        )
+    except Exception as exc:
+        logger.warning("Support admin notification failed: %s", exc)
     
     return Response({
         'message': 'Support message sent successfully. We will get back to you soon.',

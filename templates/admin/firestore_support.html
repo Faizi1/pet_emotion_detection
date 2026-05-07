@@ -41,8 +41,8 @@
       <div class="stats-icon" style="background: linear-gradient(135deg, #ffc107, #e0a800);">
         <i class="fas fa-clock"></i>
       </div>
-      <div class="stats-number text-warning">{{ pending_count|default:0 }}</div>
-      <div class="stats-label">Pending</div>
+      <div class="stats-number text-warning">{{ new_count|default:0 }}</div>
+      <div class="stats-label">New</div>
     </div>
   </div>
   <div class="col-md-3 mb-3">
@@ -50,8 +50,8 @@
       <div class="stats-icon" style="background: linear-gradient(135deg, #28a745, #1e7e34);">
         <i class="fas fa-check"></i>
       </div>
-      <div class="stats-number text-success">{{ resolved_count|default:0 }}</div>
-      <div class="stats-label">Resolved</div>
+      <div class="stats-number text-success">{{ in_progress_count|default:0 }}</div>
+      <div class="stats-label">In Progress</div>
     </div>
   </div>
   <div class="col-md-3 mb-3">
@@ -59,8 +59,8 @@
       <div class="stats-icon" style="background: linear-gradient(135deg, #dc3545, #c82333);">
         <i class="fas fa-times"></i>
       </div>
-      <div class="stats-number text-danger">{{ closed_count|default:0 }}</div>
-      <div class="stats-label">Closed</div>
+      <div class="stats-number text-danger">{{ replied_count|default:0 }}</div>
+      <div class="stats-label">Replied</div>
     </div>
   </div>
 </div>
@@ -90,10 +90,9 @@
             <label for="status" class="form-label">Status</label>
             <select class="form-select" id="status" name="status">
               <option value="">All Status</option>
-              <option value="pending" {% if request.GET.status == 'pending' %}selected{% endif %}>Pending</option>
-              <option value="in_progress" {% if request.GET.status == 'in_progress' %}selected{% endif %}>In Progress</option>
-              <option value="resolved" {% if request.GET.status == 'resolved' %}selected{% endif %}>Resolved</option>
-              <option value="closed" {% if request.GET.status == 'closed' %}selected{% endif %}>Closed</option>
+              <option value="new" {% if request.GET.status == 'new' %}selected{% endif %}>New</option>
+              <option value="read" {% if request.GET.status == 'read' %}selected{% endif %}>Read</option>
+              <option value="replied" {% if request.GET.status == 'replied' %}selected{% endif %}>Replied</option>
             </select>
           </div>
           <div class="col-md-3">
@@ -170,9 +169,6 @@
               {% for message in support_messages %}
               <tr>
                 <td>
-                  <code class="bg-light px-2 py-1 rounded">{{ message.id|truncatechars:12 }}</code>
-                </td>
-                <td>
                   <div class="d-flex align-items-center">
                     <div class="bg-info rounded-circle d-flex align-items-center justify-content-center me-3" 
                          style="width: 40px; height: 40px;">
@@ -184,26 +180,25 @@
                   </div>
                 </td>
                 <td>
+                  <code class="bg-light px-2 py-1 rounded">{{ message.id|truncatechars:12 }}</code>
+                </td>
+                <td>
                   <div style="max-width: 300px;">
                     <p class="mb-1">{{ message.details|truncatechars:100 }}</p>
                   </div>
                 </td>
                 <td>
-                  {% if message.status == 'pending' %}
+                  {% if message.status == 'new' or message.status == 'pending' %}
                     <span class="badge bg-warning">
-                      <i class="fas fa-clock"></i> Pending
+                      <i class="fas fa-clock"></i> New
                     </span>
-                  {% elif message.status == 'in_progress' %}
+                  {% elif message.status == 'read' or message.status == 'in_progress' %}
                     <span class="badge bg-info">
-                      <i class="fas fa-spinner"></i> In Progress
+                      <i class="fas fa-spinner"></i> Read
                     </span>
-                  {% elif message.status == 'resolved' %}
+                  {% elif message.status == 'replied' or message.status == 'resolved' %}
                     <span class="badge bg-success">
-                      <i class="fas fa-check"></i> Resolved
-                    </span>
-                  {% elif message.status == 'closed' %}
-                    <span class="badge bg-secondary">
-                      <i class="fas fa-times"></i> Closed
+                      <i class="fas fa-check"></i> Replied
                     </span>
                   {% else %}
                     <span class="badge bg-light text-dark">{{ message.status|title|default:"Unknown" }}</span>
@@ -323,9 +318,11 @@
           <div class="mb-3">
             <label for="replyStatus" class="form-label">Update Status</label>
             <select class="form-select" id="replyStatus" name="status">
-              <option value="in_progress">In Progress</option>
-              <option value="resolved">Resolved</option>
-              <option value="closed">Closed</option>
+              <option value="read">Read</option>
+              <option value="replied">Replied</option>
+              <option value="in_progress">In Progress (Legacy)</option>
+              <option value="resolved">Resolved (Legacy)</option>
+              <option value="closed">Closed (Legacy)</option>
             </select>
           </div>
         </div>
@@ -368,43 +365,90 @@
   </div>
 </div>
 
-<script>
-function viewMessage(messageId) {
-  // This would typically fetch message details via AJAX
-  document.getElementById('messageModalBody').innerHTML = `
-    <div class="text-center">
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
+<!-- Update Status Modal -->
+<div class="modal fade" id="statusModal" tabindex="-1" aria-labelledby="statusModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="statusModalLabel">
+          <i class="fas fa-edit text-warning"></i>
+          Update Message Status
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <p class="mt-2">Loading message details...</p>
+      <form id="statusForm" method="post">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="statusValue" class="form-label">Status</label>
+            <select class="form-select" id="statusValue" name="status">
+              <option value="new">New</option>
+              <option value="read">Read</option>
+              <option value="replied">Replied</option>
+              <option value="in_progress">In Progress (Legacy)</option>
+              <option value="resolved">Resolved (Legacy)</option>
+              <option value="closed">Closed (Legacy)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning">
+            <i class="fas fa-save"></i> Update Status
+          </button>
+        </div>
+      </form>
     </div>
+  </div>
+</div>
+
+{{ support_messages_json|json_script:"support-messages-data" }}
+<script>
+const supportMessages = JSON.parse(document.getElementById('support-messages-data').textContent || "[]");
+const supportMessagesMap = Object.fromEntries(supportMessages.map((item) => [item.id, item]));
+
+function viewMessage(messageId) {
+  const message = supportMessagesMap[messageId];
+  if (!message) {
+    return;
+  }
+
+  document.getElementById('messageModalBody').innerHTML = `
+    <div class="mb-2"><strong>ID:</strong> <code>${message.id}</code></div>
+    <div class="mb-2"><strong>Email:</strong> ${message.email || "N/A"}</div>
+    <div class="mb-2"><strong>Status:</strong> ${message.status || "new"}</div>
+    <div class="mb-2"><strong>Priority:</strong> ${message.priority || "normal"}</div>
+    <div class="mb-2"><strong>User ID:</strong> ${message.userId || "N/A"}</div>
+    <div class="mb-2"><strong>Created:</strong> ${message.createdAt || "N/A"}</div>
+    <div class="mb-2"><strong>Last Updated:</strong> ${message.updatedAt || "N/A"}</div>
+    <hr />
+    <div class="mb-2"><strong>Message:</strong><br/>${(message.details || "").replace(/\n/g, "<br/>")}</div>
+    <div><strong>Admin Reply:</strong><br/>${(message.adminReply || "No reply yet.").replace(/\n/g, "<br/>")}</div>
   `;
   
   const messageModal = new bootstrap.Modal(document.getElementById('messageModal'));
   messageModal.show();
-  
-  // Simulate loading (replace with actual AJAX call)
-  setTimeout(() => {
-    document.getElementById('messageModalBody').innerHTML = `
-      <div class="alert alert-info">
-        <i class="fas fa-info-circle"></i>
-        Message details for ID: ${messageId}
-        <br><small>This would show full message content, user details, and conversation history.</small>
-      </div>
-    `;
-  }, 1000);
 }
 
 function replyMessage(messageId) {
+  const message = supportMessagesMap[messageId];
   document.getElementById('replyForm').action = `/admin-panel/support/${messageId}/reply/`;
+  if (message && message.status) {
+    document.getElementById('replyStatus').value = message.status;
+  }
   
   const replyModal = new bootstrap.Modal(document.getElementById('replyModal'));
   replyModal.show();
 }
 
 function updateStatus(messageId) {
-  // This would open a status update modal or redirect
-  window.location.href = `/admin-panel/support/${messageId}/update-status/`;
+  const message = supportMessagesMap[messageId];
+  document.getElementById('statusForm').action = `/admin-panel/support/${messageId}/update-status/`;
+  if (message && message.status) {
+    document.getElementById('statusValue').value = message.status;
+  }
+  const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
+  statusModal.show();
 }
 
 function deleteMessage(messageId) {

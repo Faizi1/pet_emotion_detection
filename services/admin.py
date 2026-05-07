@@ -1,4 +1,5 @@
-from django.contrib import admin
+from datetime import datetime, timezone
+from django.contrib import admin, messages
 from django.urls import path
 from django.template.response import TemplateResponse
 from django.contrib.admin import AdminSite
@@ -7,6 +8,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from .firebase import get_firestore
 from django.shortcuts import redirect
 from django.views.decorators.http import require_http_methods
+from .email_service import send_support_reply_to_user
 
 
 class FirestoreDashboardAdmin(AdminSite):
@@ -82,6 +84,9 @@ class FirestoreDashboardAdmin(AdminSite):
             path('logs/<str:owner_uid>/<str:log_id>/delete/', self.firestore_log_delete_view, name='log-delete'),
             path('community/', self.firestore_community_view, name='community'),
             path('support/', self.firestore_support_view, name='support'),
+            path('support/<str:message_id>/reply/', self.firestore_support_reply_view, name='support-reply'),
+            path('support/<str:message_id>/update-status/', self.firestore_support_update_status_view, name='support-update-status'),
+            path('support/<str:message_id>/delete/', self.firestore_support_delete_view, name='support-delete'),
             # Legacy redirects to preserve existing links
             path('firestore-dashboard/', lambda request: redirect('/admin-panel/dashboard/')),
             path('firestore-users/', lambda request: redirect('/admin-panel/users/')),
@@ -295,19 +300,109 @@ class FirestoreDashboardAdmin(AdminSite):
             
             support_messages.append(msg_data)
         
-        # Calculate statistics
-        pending_count = sum(1 for msg in support_messages if msg.get('status') == 'pending')
-        resolved_count = sum(1 for msg in support_messages if msg.get('status') == 'resolved')
-        closed_count = sum(1 for msg in support_messages if msg.get('status') == 'closed')
+        support_messages.sort(
+            key=lambda msg: msg.get('createdAt') or datetime.min,
+            reverse=True
+        )
+
+        # Keep compatibility with both old and new status values.
+        new_count = sum(1 for msg in support_messages if msg.get('status') in ('new', 'pending'))
+        in_progress_count = sum(1 for msg in support_messages if msg.get('status') in ('read', 'in_progress'))
+        replied_count = sum(1 for msg in support_messages if msg.get('status') in ('replied', 'resolved'))
+
+        modal_payload = []
+        for msg in support_messages:
+            created_at = msg.get('createdAt')
+            updated_at = msg.get('updatedAt')
+            modal_payload.append({
+                'id': msg.get('id', ''),
+                'email': msg.get('email', ''),
+                'details': msg.get('details', ''),
+                'status': msg.get('status', 'new'),
+                'priority': msg.get('priority', 'normal'),
+                'adminReply': msg.get('adminReply', ''),
+                'userId': msg.get('userId', ''),
+                'createdAt': created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at or ''),
+                'updatedAt': updated_at.isoformat() if hasattr(updated_at, 'isoformat') else str(updated_at or ''),
+            })
         
         context = {
             **self.each_context(request), 
             'support_messages': support_messages,
-            'pending_count': pending_count,
-            'resolved_count': resolved_count,
-            'closed_count': closed_count,
+            'new_count': new_count,
+            'in_progress_count': in_progress_count,
+            'replied_count': replied_count,
+            'support_messages_json': modal_payload,
         }
         return TemplateResponse(request, 'admin/firestore_support.html', context)
+
+    @method_decorator(staff_member_required)
+    @method_decorator(require_http_methods(["POST"]))
+    def firestore_support_reply_view(self, request, message_id: str):
+        db = get_firestore()
+        message_ref = db.collection('support_messages').document(message_id)
+        snap = message_ref.get()
+        if not snap.exists:
+            messages.error(request, "Support message not found.")
+            return redirect('/admin-panel/support/')
+
+        reply_text = (request.POST.get('reply') or '').strip()
+        status_value = (request.POST.get('status') or 'replied').strip().lower()
+        if not reply_text:
+            messages.error(request, "Reply message cannot be empty.")
+            return redirect('/admin-panel/support/')
+        if status_value not in ('new', 'read', 'replied', 'pending', 'in_progress', 'resolved', 'closed'):
+            status_value = 'replied'
+
+        message_ref.update({
+            'adminReply': reply_text,
+            'status': status_value,
+            'updatedAt': datetime.now(timezone.utc),
+        })
+        msg_data = snap.to_dict() or {}
+        send_support_reply_to_user(
+            user_email=msg_data.get('email', ''),
+            reply=reply_text,
+            support_id=message_id,
+        )
+        messages.success(request, "Reply saved successfully.")
+        return redirect('/admin-panel/support/')
+
+    @method_decorator(staff_member_required)
+    @method_decorator(require_http_methods(["POST"]))
+    def firestore_support_update_status_view(self, request, message_id: str):
+        db = get_firestore()
+        message_ref = db.collection('support_messages').document(message_id)
+        snap = message_ref.get()
+        if not snap.exists:
+            messages.error(request, "Support message not found.")
+            return redirect('/admin-panel/support/')
+
+        status_value = (request.POST.get('status') or '').strip().lower()
+        if status_value not in ('new', 'read', 'replied', 'pending', 'in_progress', 'resolved', 'closed'):
+            messages.error(request, "Invalid status selected.")
+            return redirect('/admin-panel/support/')
+
+        message_ref.update({
+            'status': status_value,
+            'updatedAt': datetime.now(timezone.utc),
+        })
+        messages.success(request, "Status updated successfully.")
+        return redirect('/admin-panel/support/')
+
+    @method_decorator(staff_member_required)
+    @method_decorator(require_http_methods(["POST"]))
+    def firestore_support_delete_view(self, request, message_id: str):
+        db = get_firestore()
+        message_ref = db.collection('support_messages').document(message_id)
+        snap = message_ref.get()
+        if not snap.exists:
+            messages.error(request, "Support message not found.")
+            return redirect('/admin-panel/support/')
+
+        message_ref.delete()
+        messages.success(request, "Support message deleted successfully.")
+        return redirect('/admin-panel/support/')
 
 
 custom_admin_site = FirestoreDashboardAdmin(name='custom_admin')
