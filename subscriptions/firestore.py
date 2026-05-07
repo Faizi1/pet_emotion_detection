@@ -38,6 +38,7 @@ def save_subscription_for_uid(
     offer_type: Optional[str] = None,
     offer_period: Optional[str] = None,
     environment: Optional[str] = None,
+    auto_renew_status: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Store subscription under: users/{uid}/subscriptions/{transaction_id}
@@ -57,6 +58,7 @@ def save_subscription_for_uid(
         "offer_type": offer_type,
         "offer_period": offer_period,
         "environment": environment,
+        "auto_renew_status": auto_renew_status,
         "updated_at": _iso_z(_now_utc()),
     }
     # Preserve created_at if already exists

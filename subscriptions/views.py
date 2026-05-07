@@ -74,14 +74,53 @@ def _trial_days_left(expires_at_iso: str) -> int:
     return int((seconds_left + 86399) // 86400)
 
 
+def _normalize_auto_renew_status(value):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return int(value) == 1
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on", "enabled", "auto_renew_enabled"}:
+            return True
+        if lowered in {"0", "false", "no", "off", "disabled", "auto_renew_disabled"}:
+            return False
+    return None
+
+
+def _derive_subscription_status(sub: dict, *, is_active: bool) -> str:
+    """
+    Status contract for frontend:
+    - trialing: currently in trial window
+    - active: paid/standard active entitlement
+    - expired: subscription exists but entitlement is no longer active
+    """
+    if not is_active:
+        return "expired"
+
+    auto_renew_status = _normalize_auto_renew_status(sub.get("auto_renew_status"))
+    if auto_renew_status is False:
+        return "canceled"
+
+    is_trial = bool(sub.get("is_trial", False))
+    expires_at = sub.get("expires_at")
+    if is_trial and _trial_days_left(expires_at) > 0:
+        return "trialing"
+    return "active"
+
+
 def _subscription_response_shape(sub: dict, *, is_active: bool) -> dict:
     expires_at = sub.get("expires_at")
     is_trial = bool(sub.get("is_trial", False))
+    subscription_status = _derive_subscription_status(sub, is_active=is_active)
     return {
         "plan_type": sub.get("plan_type"),
         "period": sub.get("period"),
         "expires_at": expires_at,
         "is_active": bool(is_active),
+        "status": subscription_status,
         "product_id": sub.get("product_id"),
         "is_trial": is_trial,
         "trial_days": int(sub.get("trial_days") or 0),
@@ -134,6 +173,8 @@ def app_store_webhook(request):
     tx_expires_at = None
     tx_transaction_id = None
     tx_payload = {}
+    renewal_payload = {}
+    auto_renew_status = None
 
     if signed_tx:
         try:
@@ -150,6 +191,18 @@ def app_store_webhook(request):
             # If decoding fails, we still return 200 so Apple doesn't keep retrying.
             _debug_payload("app_store_webhook", "decoded_transaction_payload_error", {"detail": "signedTransactionInfo decode failed"})
             pass
+
+    signed_renewal = data.get("signedRenewalInfo")
+    if signed_renewal:
+        try:
+            renewal_payload = client.decode_and_verify_jws(signed_renewal)
+            _debug_payload("app_store_webhook", "decoded_renewal_payload", renewal_payload)
+            auto_renew_status = _normalize_auto_renew_status(renewal_payload.get("autoRenewStatus"))
+        except Exception:
+            _debug_payload("app_store_webhook", "decoded_renewal_payload_error", {"detail": "signedRenewalInfo decode failed"})
+
+    if auto_renew_status is None and subtype in {"AUTO_RENEW_DISABLED", "AUTO_RENEW_ENABLED"}:
+        auto_renew_status = subtype == "AUTO_RENEW_ENABLED"
 
     # If appAccountToken is present and we can map to Firebase uid, persist subscription.
     if app_account_token and tx_product_id and tx_transaction_id and tx_expires_at:
@@ -171,6 +224,7 @@ def app_store_webhook(request):
                 offer_type=str(tx_payload.get("offerType") or ""),
                 offer_period=tx_payload.get("offerPeriod"),
                 environment=tx_payload.get("environment"),
+                auto_renew_status=auto_renew_status,
             )
 
     # Always respond 200 OK so Apple knows we handled it.
@@ -182,6 +236,7 @@ def app_store_webhook(request):
             "subtype": subtype,
             "decodedNotificationPayload": decoded_notification_payload,
             "decodedTransactionPayload": tx_payload,
+            "decodedRenewalPayload": renewal_payload,
         },
     )
 
@@ -304,6 +359,7 @@ def verify_receipt(request):
         offer_type=str(jws_payload.get("offerType") or ""),
         offer_period=jws_payload.get("offerPeriod"),
         environment=jws_payload.get("environment"),
+        auto_renew_status=_normalize_auto_renew_status(jws_payload.get("autoRenewStatus")),
     )
 
     return _debug_response(
@@ -345,13 +401,20 @@ def subscription_status(request):
     _debug_request("subscription_status", request)
     uid = getattr(request.user, "uid", None)
     if not uid:
-        return _debug_response("subscription_status", {"subscription": None}, status.HTTP_200_OK)
+        return _debug_response(
+            "subscription_status",
+            {"subscription": None},
+            status.HTTP_200_OK,
+        )
 
     sub = get_active_subscription(uid)
     if sub:
+        sub_payload = _subscription_response_shape(sub, is_active=True)
         return _debug_response(
             "subscription_status",
-            {"subscription": _subscription_response_shape(sub, is_active=True)},
+            {
+                "subscription": sub_payload,
+            },
             status.HTTP_200_OK,
         )
 
@@ -359,17 +422,22 @@ def subscription_status(request):
     # "expired" state instead of ambiguous null.
     latest = get_latest_subscription(uid)
     if latest:
+        latest_payload = _subscription_response_shape(latest, is_active=False)
         return _debug_response(
             "subscription_status",
             {
-                "subscription": _subscription_response_shape(latest, is_active=False),
+                "subscription": latest_payload,
                 "access_active": False,
                 "reason": "expired_or_not_renewed",
             },
             status.HTTP_200_OK,
         )
 
-    return _debug_response("subscription_status", {"subscription": None}, status.HTTP_200_OK)
+    return _debug_response(
+        "subscription_status",
+        {"subscription": None},
+        status.HTTP_200_OK,
+    )
 
 
 @api_view(["POST"])
