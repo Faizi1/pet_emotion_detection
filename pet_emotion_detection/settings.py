@@ -140,7 +140,12 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # # CORS
 # CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
+    # Prod Personal
     "https://pet-emotion-detection.onrender.com",
+
+    # Prod Petmood
+    "https://ai-pet-mood.onrender.com"
+
 ]
 
 # REST Framework
