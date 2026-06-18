@@ -36,7 +36,10 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
 ]
 CSRF_TRUSTED_ORIGINS = [
+    # Prod Personal
     "https://pet-emotion-detection.onrender.com",
+    # Prod Petmood
+    "https://ai-pet-mood.onrender.com"
 ]
 
 # Application definition
