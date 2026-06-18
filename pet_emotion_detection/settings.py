@@ -32,6 +32,7 @@ DEBUG = os.getenv('DEBUG', '1') == '1'
 
 ALLOWED_HOSTS = [
     "pet-emotion-detection.onrender.com",
+    "ai-pet-mood.onrender.com",
     "localhost",
     "127.0.0.1",
 ]
