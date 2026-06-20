@@ -48,6 +48,7 @@ packaging==25.0
 pytz==2025.2
 uritemplate==4.2.0
 gunicorn>=22.0.0
+whitenoise>=6.7.0
 
 # Twilio SMS Integration (Optional - comment out if not using)
 twilio==8.10.0
