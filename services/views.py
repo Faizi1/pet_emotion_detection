@@ -1926,10 +1926,10 @@ def scans_create(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-    # Paid AI models emotion detection (Nyckel for images, AssemblyAI for audio)
+    # Paid AI models emotion detection (two-stage for images, AssemblyAI for audio)
+    detected_pet_type = None
     try:
         if media_type in ['image', 'photo']:
-            # Nyckel-only for image emotion detection
             provider = 'nyckel'
 
             consent = _get_ai_consent(user.uid)
@@ -1942,16 +1942,77 @@ def scans_create(request):
                     },
                     status=status.HTTP_403_FORBIDDEN,
                 )
-            
-            # Use Nyckel Dog Emotions Identifier
-            from .nyckel_service import nyckel_service
-            ai_result = nyckel_service.detect_emotion_from_image(file_content)
-            
+
+            # Stage 1: Pet detection gate
+            detection = None
+            try:
+                from .pet_detector import get_pet_detector
+
+                detection = get_pet_detector().detect(file_content)
+            except Exception as det_err:
+                logger.warning("Detector error (failing open): %s", det_err)
+
+            if detection is not None and not detection.pet_detected:
+                rejection = detection.rejection_reason or "no_pet_detected"
+                messages_map = {
+                    "no_pet_in_image": (
+                        "No cat or dog was detected in this photo. "
+                        "Please upload a clear photo of your pet."
+                    ),
+                    "pet_too_small": (
+                        "Your pet is too small in the frame. "
+                        "Please get closer and try again."
+                    ),
+                }
+                return Response(
+                    {
+                        "error": rejection,
+                        "detail": messages_map.get(
+                            rejection,
+                            "No pet detected. Please upload a photo of your cat or dog.",
+                        ),
+                        "suggestions": [
+                            "Make sure your pet is clearly visible",
+                            "Ensure good lighting",
+                            "Get closer to your pet",
+                            "Avoid photos where the pet is very small",
+                        ],
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+
+            image_for_emotion = (
+                detection.cropped_image_bytes
+                if detection and detection.cropped_image_bytes
+                else file_content
+            )
+            detected_pet_type = detection.pet_type if detection else None
+            detection_conf = detection.detection_confidence if detection else 0.0
+
+            # Stage 2: Emotion classification
+            try:
+                from .pet_emotion_classifier import get_emotion_classifier
+
+                ai_result = get_emotion_classifier().classify(
+                    image_for_emotion,
+                    pet_type=detected_pet_type,
+                )
+            except Exception as clf_err:
+                logger.warning("Classifier error, using Nyckel: %s", clf_err)
+                from .nyckel_service import nyckel_service
+
+                ai_result = nyckel_service.detect_emotion_from_image(image_for_emotion)
+                ai_result["analysis_method"] = "nyckel_fallback"
+
+            ai_result["detection_confidence"] = detection_conf
+            ai_result["detected_pet_type"] = detected_pet_type
+
             emotion = ai_result['emotion']
             confidence = ai_result['confidence']
-            analysis_method = ai_result.get('analysis_method', 'nyckel')
+            analysis_method = ai_result.get('analysis_method', 'two_stage')
             top_emotions = ai_result.get('top_emotions', [])
-            ai_type = ai_result.get('ai_detector_type', 'nyckel')
+            ai_type = ai_result.get('ai_detector_type', 'two_stage_pipeline')
+            detected_pet_type = ai_result.get('detected_pet_type') or detected_pet_type
 
         elif media_type in ['audio', 'sound', 'voice']:
             # Use AssemblyAI-based audio emotion detection with custom pet heuristics
@@ -1994,6 +2055,8 @@ def scans_create(request):
         top_emotions = [{'emotion': emotion, 'confidence': confidence}]
         ai_type = 'fallback'
 
+    animal_type = detected_pet_type or 'unknown'
+
     log = {
         'petId': pet_id,
         'timestamp': datetime.now(timezone.utc),
@@ -2002,7 +2065,7 @@ def scans_create(request):
         'mediaUrl': media_url,
         'mediaType': media_type,
         'analysisMethod': analysis_method,
-        'animalType': 'unknown',
+        'animalType': animal_type,
         'topEmotions': top_emotions,
         'aiDetectorType': ai_type,
     }
@@ -2013,7 +2076,7 @@ def scans_create(request):
         'confidence': confidence,
         'mediaUrl': media_url,
         'petId': pet_id,
-        'animalType': 'unknown',
+        'animalType': animal_type,
         'analysisMethod': analysis_method,
         'topEmotions': top_emotions,
         'aiDetectorType': ai_type,
@@ -2035,28 +2098,29 @@ def ai_detector_status(request):
     Get AI emotion detector status and information
     """
     try:
-        # Get Advanced Image AI detector info
-        from .advanced_image_ai import get_detector_info
-        
-        detector_info = get_detector_info()
-        
+        from .emotion_model import EMOTION_CLASSES
+        from .pet_detector import get_pet_detector
+        from .pet_emotion_classifier import get_emotion_classifier
+
+        detector = get_pet_detector()
+        classifier = get_emotion_classifier()
+
         combined_info = {
-            'system_status': 'enhanced_pet_ai_ready',
-            'total_emotions': detector_info['total_emotions'],
-            'expected_accuracy': detector_info['expected_accuracy'],
-            'model_architectures': {
-                'images': detector_info['image_model_architecture'],
-                'audio': detector_info['audio_model_architecture']
-            },
-            'image_model_loaded': detector_info['image_model_loaded'],
-            'audio_model_loaded': detector_info['audio_model_loaded'],
-            'research_based': detector_info['research_based'],
-            'optimized_for_pets': detector_info['optimized_for_pets'],
-            'emotion_labels': detector_info['emotion_labels'],
-            'features_used': detector_info['features_used'],
-            'model_components': detector_info['model_components']
+            'system_status': 'two_stage_pipeline',
+            'pipeline': ['yolov8_pet_detection', 'efficientnet_b3_emotion'],
+            'pet_detector_ready': detector._ready,
+            'emotion_classifier_ready': classifier._ready,
+            'emotion_classifier_finetuned': classifier._finetuned,
+            'emotion_inference_backend': classifier._backend,
+            'onnx_enabled': classifier._onnx_session is not None,
+            'total_emotions': len(EMOTION_CLASSES),
+            'emotion_labels': EMOTION_CLASSES,
+            'expected_accuracy': (
+                '65-85% (fine-tuned)' if classifier._finetuned else '40-60% (pretrained fallback)'
+            ),
+            'audio_provider': 'assemblyai',
         }
-        
+
         return Response(combined_info, status=status.HTTP_200_OK)
         
     except Exception as e:

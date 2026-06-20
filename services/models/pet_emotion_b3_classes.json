@@ -1,0 +1,14 @@
+{
+  "classes": [
+    "angry",
+    "calm",
+    "happy",
+    "sad"
+  ],
+  "class_to_idx": {
+    "angry": 0,
+    "calm": 1,
+    "happy": 2,
+    "sad": 3
+  }
+}

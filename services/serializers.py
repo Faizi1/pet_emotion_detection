@@ -24,7 +24,10 @@ class EmotionScanRequestSerializer(serializers.Serializer):
 
 
 class EmotionScanResponseSerializer(serializers.Serializer):
-    emotion = serializers.ChoiceField(choices=['happy', 'sad', 'anxious', 'excited', 'neutral', 'calm', 'aggressive', 'playful', 'sleepy'])
+    emotion = serializers.ChoiceField(choices=[
+        'happy', 'sad', 'anxious', 'excited', 'neutral', 'calm',
+        'aggressive', 'angry', 'fearful', 'playful', 'sleepy',
+    ])
     confidence = serializers.FloatField()
     mediaUrl = serializers.URLField(allow_blank=True, required=False)
     petId = serializers.CharField()
