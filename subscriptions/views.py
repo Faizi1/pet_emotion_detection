@@ -15,6 +15,13 @@ from .firestore import (
     save_subscription_for_uid,
     list_all_subscriptions,
 )
+from .limits import (
+    FAMILY_MAX_PROFILES,
+    FAMILY_SCANS_PER_DAY,
+    TRIAL_MAX_PROFILES,
+    TRIAL_SCANS_PER_DAY,
+    build_quota_payload,
+)
 
 
 PRODUCT_MAPPING = {
@@ -414,6 +421,7 @@ def subscription_status(request):
             "subscription_status",
             {
                 "subscription": sub_payload,
+                "quotas": build_quota_payload(uid, sub),
             },
             status.HTTP_200_OK,
         )
@@ -429,13 +437,17 @@ def subscription_status(request):
                 "subscription": latest_payload,
                 "access_active": False,
                 "reason": "expired_or_not_renewed",
+                "quotas": build_quota_payload(uid, None),
             },
             status.HTTP_200_OK,
         )
 
     return _debug_response(
         "subscription_status",
-        {"subscription": None},
+        {
+            "subscription": None,
+            "quotas": build_quota_payload(uid, None),
+        },
         status.HTTP_200_OK,
     )
 
@@ -459,7 +471,8 @@ def restore_purchases(request):
             "subscriptions": [
                 _subscription_response_shape(s, is_active=True)
                 for s in subs
-            ]
+            ],
+            "quotas": build_quota_payload(uid, subs[0] if subs else None),
         },
     )
 
@@ -512,6 +525,19 @@ def list_plans(request):
     data = []
     for product_id, (plan_type, period) in PRODUCT_MAPPING.items():
         name = f"{plan_type.capitalize()} {period.capitalize()}"
+        is_trial_eligible = product_id in TRIAL_ELIGIBLE_PRODUCTS
+        if plan_type == "family":
+            paid_limits = {
+                "maxProfiles": FAMILY_MAX_PROFILES,
+                "scansPerDay": FAMILY_SCANS_PER_DAY,
+            }
+        else:
+            paid_limits = {"maxProfiles": None, "scansPerDay": None}
+        trial_limits = (
+            {"maxProfiles": TRIAL_MAX_PROFILES, "scansPerDay": TRIAL_SCANS_PER_DAY}
+            if is_trial_eligible
+            else None
+        )
         data.append(
             {
                 "product_id": product_id,
@@ -521,9 +547,13 @@ def list_plans(request):
                 "platform": "apple",
                 "price_display": "",
                 "trial_offer": {
-                    "enabled": product_id in TRIAL_ELIGIBLE_PRODUCTS,
-                    "days": TRIAL_DAYS if product_id in TRIAL_ELIGIBLE_PRODUCTS else 0,
+                    "enabled": is_trial_eligible,
+                    "days": TRIAL_DAYS if is_trial_eligible else 0,
                     "type": "introductory",
+                },
+                "limits": {
+                    "paid": paid_limits,
+                    "trial": trial_limits,
                 },
             }
         )

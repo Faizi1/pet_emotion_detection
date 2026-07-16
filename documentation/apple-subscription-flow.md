@@ -57,27 +57,72 @@ Recommended frontend behavior:
 - Call `status` on app launch, after purchase, and when subscription screen opens.
 - Also refresh on app resume.
 
-## 3) Trial scan limit (7/day)
+## 3) Scan limits (7/day, account-wide)
 
-Backend enforces this on `POST /api/scans`:
+Backend enforces daily scan limits on `POST /api/scans`:
 
-- Applies only when active subscription is trial (`is_trial=true` and not expired).
-- Limit is `7` scans per UTC day.
-- On 8th scan the same day, backend returns `429`.
+- **Free trial** (`is_trial=true`, active): **7 scans/day**
+- **Family plan** (`plan_type=family`, active, paid): **7 scans/day**
+- **Premium plan** (paid, non-family): unlimited scans
+- Limit is **account-wide** (total across all pet profiles, not per pet)
+- Counter resets at **UTC midnight** (`00:00:00Z`)
 
-Example limit response:
+On limit exceeded, backend returns `429`:
 
 ```json
 {
-  "detail": "Daily trial scan limit reached",
+  "detail": "Daily scan limit reached",
   "limit": 7,
   "used": 7,
   "remaining": 0,
-  "resetsAt": "2026-04-21T00:00:00Z"
+  "resetsAt": "2026-04-21T00:00:00Z",
+  "tier": "trial"
 }
 ```
 
-Frontend should show user-friendly message and the reset timing.
+Frontend should show a user-friendly message and the reset timing.
+
+## 3b) Profile limits
+
+Backend enforces profile limits on `POST /api/pets`:
+
+- **Free trial**: max **2** pet profiles (e.g. 1 dog + 1 cat)
+- **Family plan** (paid): max **5** pet profiles
+- **Premium plan**: unlimited profiles
+
+On limit exceeded, backend returns `403`:
+
+```json
+{
+  "detail": "Profile limit reached for your subscription",
+  "limit": 2,
+  "used": 2,
+  "remaining": 0,
+  "tier": "trial"
+}
+```
+
+## 3c) Quota snapshot (`GET /api/subscriptions/status`)
+
+The status endpoint includes live usage so the app can show remaining scans/profiles:
+
+```json
+{
+  "subscription": { "...": "..." },
+  "quotas": {
+    "tier": "trial",
+    "maxProfiles": 2,
+    "profilesUsed": 1,
+    "profilesRemaining": 1,
+    "scansPerDay": 7,
+    "scansUsedToday": 3,
+    "scansRemainingToday": 4,
+    "resetsAt": "2026-04-21T00:00:00Z"
+  }
+}
+```
+
+For unlimited tiers, `maxProfiles`, `profilesRemaining`, `scansPerDay`, and `scansRemainingToday` are `null`.
 
 ## 4) After trial expires
 

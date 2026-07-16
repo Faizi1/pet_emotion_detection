@@ -24,6 +24,7 @@ from .firebase import get_auth, get_firestore
 from .sms_service import sms_service
 from .email_service import send_blocked_user_email, send_support_notification_to_admin
 from subscriptions.firestore import get_active_subscription as get_user_active_subscription
+from subscriptions.limits import check_profile_creation_allowed, check_scan_allowed
 # Remove AI detector integration; use random fallback only
 emotion_detector = None
 AI_DETECTOR_TYPE = "none"
@@ -70,32 +71,6 @@ def _pets_collection(uid: str):
 
 def _logs_collection(uid: str):
     return get_firestore().collection('users').document(uid).collection('emotion_logs')
-
-
-def _today_scan_count(uid: str) -> int:
-    """
-    Count today's scans in UTC for quota enforcement.
-    """
-    start_of_day = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    end_of_day = start_of_day + timedelta(days=1)
-    logs_ref = _logs_collection(uid)
-    try:
-        return len(
-            list(
-                logs_ref.where('timestamp', '>=', start_of_day)
-                .where('timestamp', '<', end_of_day)
-                .stream()
-            )
-        )
-    except FailedPrecondition:
-        # Fallback if index is missing/building.
-        logs = list(logs_ref.stream())
-        count = 0
-        for doc in logs:
-            ts = (doc.to_dict() or {}).get('timestamp')
-            if isinstance(ts, datetime) and start_of_day <= ts < end_of_day:
-                count += 1
-        return count
 
 
 def _posts_collection():
@@ -1643,6 +1618,12 @@ def pets_list_create(request):
             pets = filtered_pets
         
         return Response(pets)
+
+    active_sub = get_user_active_subscription(user.uid)
+    profile_allowed, profile_error = check_profile_creation_allowed(user.uid, active_sub)
+    if not profile_allowed:
+        return Response(profile_error, status=status.HTTP_403_FORBIDDEN)
+
     data = request.data.copy()
     photo_file = request.FILES.get('photo') or request.FILES.get('photoUrl')
     if photo_file:
@@ -1878,25 +1859,11 @@ def scans_create(request):
     pet_id = ser.validated_data['petId']
     content_type = getattr(file, 'content_type', 'application/octet-stream')
 
-    # Trial policy: active trial users can run up to 7 scans/day (UTC).
-    trial_daily_limit = 7
     active_sub = get_user_active_subscription(user.uid)
-    is_active_trial = bool(active_sub and active_sub.get('is_trial'))
-    if is_active_trial:
-        used_today = _today_scan_count(user.uid)
-        if used_today >= trial_daily_limit:
-            reset_at = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-            return Response(
-                {
-                    'detail': 'Daily trial scan limit reached',
-                    'limit': trial_daily_limit,
-                    'used': used_today,
-                    'remaining': 0,
-                    'resetsAt': reset_at.isoformat().replace('+00:00', 'Z'),
-                },
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
-    
+    scan_allowed, scan_error = check_scan_allowed(user.uid, active_sub)
+    if not scan_allowed:
+        return Response(scan_error, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
     # File size limits for free tier (5MB for images, 10MB for audio)
     MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
     MAX_AUDIO_SIZE = 10 * 1024 * 1024  # 10MB

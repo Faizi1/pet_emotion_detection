@@ -177,7 +177,7 @@
           "response": []
         },
         {
-          "name": "Scan Create (Trial limit test)",
+          "name": "Scan Create (Daily scan limit test)",
           "request": {
             "method": "POST",
             "header": [
@@ -214,6 +214,37 @@
               "path": [
                 "api",
                 "scans"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Pet (Profile limit test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Pet\",\n  \"gender\": \"male\",\n  \"species\": \"dog\",\n  \"breed\": \"Labrador\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/pets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "pets"
               ]
             }
           },
