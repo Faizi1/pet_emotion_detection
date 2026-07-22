@@ -57,17 +57,28 @@ Recommended frontend behavior:
 - Call `status` on app launch, after purchase, and when subscription screen opens.
 - Also refresh on app resume.
 
-## 3) Scan limits (7/day, account-wide)
+## 3) Scan limits
 
-Backend enforces daily scan limits on `POST /api/scans`:
+Backend enforces scan access on `POST /api/scans`:
 
+- **No subscription**: scans **blocked** — user must subscribe first
 - **Free trial** (`is_trial=true`, active): **7 scans/day**
 - **Family plan** (`plan_type=family`, active, paid): **7 scans/day**
 - **Premium plan** (paid, non-family): unlimited scans
-- Limit is **account-wide** (total across all pet profiles, not per pet)
+- Daily limits are **account-wide** (total across all pet profiles, not per pet)
 - Counter resets at **UTC midnight** (`00:00:00Z`)
 
-On limit exceeded, backend returns `429`:
+No subscription — backend returns `403`:
+
+```json
+{
+  "detail": "You do not have an active subscription. Please subscribe to scan your pet's emotions.",
+  "code": "subscription_required",
+  "tier": "none"
+}
+```
+
+Daily limit exceeded — backend returns `429`:
 
 ```json
 {
@@ -86,15 +97,30 @@ Frontend should show a user-friendly message and the reset timing.
 
 Backend enforces profile limits on `POST /api/pets`:
 
-- **Free trial**: max **2** pet profiles (e.g. 1 dog + 1 cat)
+- **No subscription**: max **1** pet profile
+- **Free trial**: max **2** pet profiles
 - **Family plan** (paid): max **5** pet profiles
 - **Premium plan**: unlimited profiles
 
-On limit exceeded, backend returns `403`:
+No subscription — 2nd profile blocked with `403`:
+
+```json
+{
+  "detail": "You can only create one pet profile without a subscription. Please subscribe to add more profiles.",
+  "code": "profile_limit_reached",
+  "limit": 1,
+  "used": 1,
+  "remaining": 0,
+  "tier": "none"
+}
+```
+
+Subscribed user at profile cap — backend returns `403`:
 
 ```json
 {
   "detail": "Profile limit reached for your subscription",
+  "code": "profile_limit_reached",
   "limit": 2,
   "used": 2,
   "remaining": 0,
@@ -108,21 +134,23 @@ The status endpoint includes live usage so the app can show remaining scans/prof
 
 ```json
 {
-  "subscription": { "...": "..." },
+  "subscription": null,
   "quotas": {
-    "tier": "trial",
-    "maxProfiles": 2,
+    "tier": "none",
+    "maxProfiles": 1,
     "profilesUsed": 1,
-    "profilesRemaining": 1,
-    "scansPerDay": 7,
-    "scansUsedToday": 3,
-    "scansRemainingToday": 4,
+    "profilesRemaining": 0,
+    "scansAllowed": false,
+    "scansPerDay": 0,
+    "scansUsedToday": 0,
+    "scansRemainingToday": 0,
+    "requiresSubscription": true,
     "resetsAt": "2026-04-21T00:00:00Z"
   }
 }
 ```
 
-For unlimited tiers, `maxProfiles`, `profilesRemaining`, `scansPerDay`, and `scansRemainingToday` are `null`.
+For unlimited tiers, `maxProfiles`, `profilesRemaining`, `scansPerDay`, and `scansRemainingToday` are `null`, and `scansAllowed` is `true`.
 
 ## 4) After trial expires
 

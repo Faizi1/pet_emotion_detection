@@ -1862,7 +1862,12 @@ def scans_create(request):
     active_sub = get_user_active_subscription(user.uid)
     scan_allowed, scan_error = check_scan_allowed(user.uid, active_sub)
     if not scan_allowed:
-        return Response(scan_error, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        scan_status = (
+            status.HTTP_403_FORBIDDEN
+            if scan_error.get("code") == "subscription_required"
+            else status.HTTP_429_TOO_MANY_REQUESTS
+        )
+        return Response(scan_error, status=scan_status)
 
     # File size limits for free tier (5MB for images, 10MB for audio)
     MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB

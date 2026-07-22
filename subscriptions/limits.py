@@ -1,6 +1,7 @@
 """
 Subscription quota limits and enforcement helpers.
 
+No subscription: max 1 profile, scans blocked (subscribe required).
 Free trial: max 2 profiles, 7 scans/day (account-wide).
 Family plan: max 5 profiles, 7 scans/day (account-wide).
 Daily scan counters reset at UTC midnight.
@@ -14,10 +15,18 @@ from google.api_core.exceptions import FailedPrecondition
 
 from services.firebase import get_firestore
 
+FREE_MAX_PROFILES = 1
 TRIAL_MAX_PROFILES = 2
 FAMILY_MAX_PROFILES = 5
 TRIAL_SCANS_PER_DAY = 7
 FAMILY_SCANS_PER_DAY = 7
+
+SUBSCRIPTION_REQUIRED_SCAN_MESSAGE = (
+    "You do not have an active subscription. Please subscribe to scan your pet's emotions."
+)
+FREE_PROFILE_LIMIT_MESSAGE = (
+    "You can only create one pet profile without a subscription. Please subscribe to add more profiles."
+)
 
 
 def _pets_collection(uid: str):
@@ -71,8 +80,9 @@ def resolve_entitlement(active_sub: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not active_sub:
         return {
             "tier": "none",
-            "max_profiles": None,
+            "max_profiles": FREE_MAX_PROFILES,
             "scans_per_day": None,
+            "requires_subscription": True,
         }
 
     is_trial = bool(active_sub.get("is_trial"))
@@ -83,6 +93,7 @@ def resolve_entitlement(active_sub: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "tier": "trial",
             "max_profiles": TRIAL_MAX_PROFILES,
             "scans_per_day": TRIAL_SCANS_PER_DAY,
+            "requires_subscription": False,
         }
 
     if plan_type == "family":
@@ -90,12 +101,14 @@ def resolve_entitlement(active_sub: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "tier": "family",
             "max_profiles": FAMILY_MAX_PROFILES,
             "scans_per_day": FAMILY_SCANS_PER_DAY,
+            "requires_subscription": False,
         }
 
     return {
         "tier": plan_type,
         "max_profiles": None,
         "scans_per_day": None,
+        "requires_subscription": False,
     }
 
 
@@ -107,15 +120,22 @@ def build_quota_payload(uid: str, active_sub: Optional[Dict[str, Any]]) -> Dict[
 
     max_profiles = entitlement["max_profiles"]
     scans_per_day = entitlement["scans_per_day"]
+    requires_subscription = bool(entitlement.get("requires_subscription"))
 
     payload: Dict[str, Any] = {
         "tier": entitlement["tier"],
         "maxProfiles": max_profiles,
         "profilesUsed": profiles_used,
         "profilesRemaining": None if max_profiles is None else max(0, max_profiles - profiles_used),
-        "scansPerDay": scans_per_day,
+        "scansAllowed": not requires_subscription,
+        "scansPerDay": scans_per_day if not requires_subscription else 0,
         "scansUsedToday": scans_used,
-        "scansRemainingToday": None if scans_per_day is None else max(0, scans_per_day - scans_used),
+        "scansRemainingToday": (
+            0
+            if requires_subscription
+            else None if scans_per_day is None else max(0, scans_per_day - scans_used)
+        ),
+        "requiresSubscription": requires_subscription,
         "resetsAt": next_utc_midnight().isoformat().replace("+00:00", "Z"),
     }
     return payload
@@ -129,6 +149,14 @@ def check_scan_allowed(
     error_body is suitable for a 429 response when not allowed.
     """
     entitlement = resolve_entitlement(active_sub)
+
+    if entitlement.get("requires_subscription"):
+        return False, {
+            "detail": SUBSCRIPTION_REQUIRED_SCAN_MESSAGE,
+            "code": "subscription_required",
+            "tier": entitlement["tier"],
+        }
+
     scans_per_day = entitlement["scans_per_day"]
     if scans_per_day is None:
         return True, None
@@ -160,8 +188,14 @@ def check_profile_creation_allowed(
 
     used = pet_profile_count(uid)
     if used >= max_profiles:
+        detail = (
+            FREE_PROFILE_LIMIT_MESSAGE
+            if entitlement["tier"] == "none"
+            else "Profile limit reached for your subscription"
+        )
         return False, {
-            "detail": "Profile limit reached for your subscription",
+            "detail": detail,
+            "code": "profile_limit_reached",
             "limit": max_profiles,
             "used": used,
             "remaining": 0,
